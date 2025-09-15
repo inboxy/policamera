@@ -28,6 +28,7 @@ class PoliCameraApp {
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
         this.photosFab = document.getElementById('photosFab');
+        this.settingsFab = document.getElementById('settingsFab');
         this.photosOverlay = document.getElementById('photosOverlay');
 
 
@@ -50,6 +51,7 @@ class PoliCameraApp {
         this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
         this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
+        this.settingsFab.addEventListener('click', () => this.toggleSettings());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -389,6 +391,11 @@ class PoliCameraApp {
         } else {
             this.photosOverlay.style.display = 'none';
         }
+    }
+
+    toggleSettings() {
+        // For now, just show an alert - settings panel can be implemented later
+        alert('Settings panel - coming soon!\n\nFeatures to be added:\n• Camera resolution settings\n• GPS update frequency\n• Data export options\n• Theme selection');
     }
 
     pauseCamera() {
