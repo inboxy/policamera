@@ -22,13 +22,16 @@ class PoliCameraApp {
     initializeElements() {
         this.video = document.getElementById('cameraFeed');
         this.canvas = document.getElementById('canvas');
-        this.startCameraBtn = document.getElementById('startCamera');
-        this.captureBtn = document.getElementById('capturePhoto');
         this.photosGrid = document.getElementById('photosGrid');
-        this.captureFab = document.getElementById('captureFab');
 
-        // Network status elements
-        this.networkStatus = document.getElementById('networkStatus');
+        // FAB elements
+        this.startFab = document.getElementById('startFab');
+        this.captureFab = document.getElementById('captureFab');
+        this.photosFab = document.getElementById('photosFab');
+        this.photosOverlay = document.getElementById('photosOverlay');
+
+        // Network status elements (now in overlay)
+        this.networkStatus = document.getElementById('networkStatusOverlay');
         this.statusIcon = this.networkStatus.querySelector('.material-icons');
         this.statusText = this.networkStatus.querySelector('.status-text');
 
@@ -48,9 +51,9 @@ class PoliCameraApp {
     }
 
     initializeEventListeners() {
-        this.startCameraBtn.addEventListener('click', () => this.startCamera());
-        this.captureBtn.addEventListener('click', () => this.capturePhoto());
+        this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
+        this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -280,12 +283,9 @@ class PoliCameraApp {
 
     async startCamera() {
         try {
-            // Update button state to show loading
-            this.startCameraBtn.innerHTML = `
-                <span class="material-icons">hourglass_empty</span>
-                <span class="label-large">Starting...</span>
-            `;
-            this.startCameraBtn.disabled = true;
+            // Update FAB state to show loading
+            this.startFab.innerHTML = `<span class="material-icons">hourglass_empty</span>`;
+            this.startFab.style.pointerEvents = 'none';
 
             // Start camera and GPS simultaneously
             const [cameraResult, locationResult] = await Promise.allSettled([
@@ -298,16 +298,11 @@ class PoliCameraApp {
             let locationSuccess = locationResult.status === 'fulfilled';
 
             // Update UI based on results
-            this.updateStartButtonStatus(cameraSuccess, locationSuccess);
+            this.updateStartFabStatus(cameraSuccess, locationSuccess);
 
             if (cameraSuccess) {
-                this.captureBtn.disabled = false;
                 this.captureFab.style.display = 'flex';
-
-                // Hide controls after 3 seconds
-                setTimeout(() => {
-                    document.querySelector('.controls').style.transform = 'translateY(100%)';
-                }, 3000);
+                this.photosFab.style.display = 'flex';
             }
 
             // Show errors if any
@@ -396,37 +391,34 @@ class PoliCameraApp {
         }
     }
 
-    updateStartButtonStatus(cameraSuccess, locationSuccess) {
+    updateStartFabStatus(cameraSuccess, locationSuccess) {
         if (cameraSuccess && locationSuccess) {
-            this.startCameraBtn.innerHTML = `
-                <span class="material-icons">check_circle</span>
-                <span class="label-large">Active (Camera + GPS)</span>
-            `;
-            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-primary)';
+            this.startFab.innerHTML = `<span class="material-icons">check_circle</span>`;
+            this.startFab.style.backgroundColor = 'var(--md-sys-color-primary)';
         } else if (cameraSuccess) {
-            this.startCameraBtn.innerHTML = `
-                <span class="material-icons">videocam</span>
-                <span class="label-large">Camera Only</span>
-            `;
-            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
+            this.startFab.innerHTML = `<span class="material-icons">videocam</span>`;
+            this.startFab.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
         } else if (locationSuccess) {
-            this.startCameraBtn.innerHTML = `
-                <span class="material-icons">location_on</span>
-                <span class="label-large">GPS Only</span>
-            `;
-            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
+            this.startFab.innerHTML = `<span class="material-icons">location_on</span>`;
+            this.startFab.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
         } else {
-            this.resetStartButton();
+            this.resetStartFab();
         }
+        this.startFab.style.pointerEvents = 'auto';
     }
 
-    resetStartButton() {
-        this.startCameraBtn.innerHTML = `
-            <span class="material-icons">videocam</span>
-            <span class="label-large">Start Camera + GPS</span>
-        `;
-        this.startCameraBtn.disabled = false;
-        this.startCameraBtn.style.backgroundColor = '';
+    resetStartFab() {
+        this.startFab.innerHTML = `<span class="material-icons">videocam</span>`;
+        this.startFab.style.backgroundColor = '';
+        this.startFab.style.pointerEvents = 'auto';
+    }
+
+    togglePhotosOverlay() {
+        if (this.photosOverlay.style.display === 'none') {
+            this.photosOverlay.style.display = 'block';
+        } else {
+            this.photosOverlay.style.display = 'none';
+        }
     }
 
     pauseCamera() {

@@ -14,16 +14,6 @@
 </head>
 <body>
     <div class="app">
-        <header class="header">
-            <div class="header-content">
-                <h1 class="headline-large">PoliCamera</h1>
-                <div class="network-status" id="networkStatus">
-                    <span class="material-icons status-icon">wifi</span>
-                    <span class="body-medium status-text">Online</span>
-                </div>
-            </div>
-        </header>
-
         <main class="main">
             <div class="camera-container">
                 <video id="cameraFeed" autoplay playsinline>
@@ -44,27 +34,31 @@
 
             </div>
 
-            <div class="controls">
-                <button id="startCamera" class="md-filled-button">
-                    <span class="material-icons">videocam</span>
-                    <span class="label-large">Start Camera + GPS</span>
-                </button>
-                <button id="capturePhoto" class="md-filled-tonal-button" disabled>
-                    <span class="material-icons">camera_alt</span>
-                    <span class="label-large">Capture</span>
-                </button>
+            <!-- Status overlay -->
+            <div class="status-overlay">
+                <div class="network-status" id="networkStatusOverlay">
+                    <span class="material-icons status-icon">wifi</span>
+                    <span class="body-medium status-text">Online</span>
+                </div>
             </div>
 
-            <div class="captured-section" id="capturedSection">
-                <div class="section-header">
-                    <h2 class="title-large">Captured Photos</h2>
-                </div>
+            <!-- Captured photos overlay -->
+            <div class="photos-overlay" id="photosOverlay" style="display: none;">
                 <div class="photos-grid" id="photosGrid"></div>
             </div>
         </main>
 
-        <div class="fab" id="captureFab">
+        <!-- Floating Action Buttons -->
+        <div class="fab start-fab" id="startFab">
+            <span class="material-icons">videocam</span>
+        </div>
+
+        <div class="fab capture-fab" id="captureFab" style="display: none;">
             <span class="material-icons">camera_alt</span>
+        </div>
+
+        <div class="fab photos-fab" id="photosFab" style="display: none;">
+            <span class="material-icons">photo_library</span>
         </div>
     </div>
 
