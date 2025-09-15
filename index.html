@@ -26,7 +26,9 @@
 
         <main class="main">
             <div class="camera-container">
-                <video id="cameraFeed" autoplay playsinline></video>
+                <video id="cameraFeed" autoplay playsinline>
+                    <track id="positionTrack" kind="subtitles" src="" srclang="en" label="Position Data" default>
+                </video>
                 <canvas id="canvas" style="display: none;"></canvas>
 
                 <div class="camera-overlay">

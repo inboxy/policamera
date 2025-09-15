@@ -500,3 +500,67 @@ body {
     height: 48px;
   }
 }
+
+/* WebVTT Cue Styling */
+video::cue {
+  background-color: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: var(--md-sys-elevation-level2);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  white-space: pre-line;
+}
+
+video::cue(.position-data) {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+  font-weight: 500;
+}
+
+video::cue(.location) {
+  background-color: rgba(180, 242, 34, 0.1);
+  color: var(--md-sys-color-primary);
+  border-left: 3px solid var(--md-sys-color-primary);
+}
+
+video::cue(.orientation) {
+  background-color: rgba(194, 201, 160, 0.1);
+  color: var(--md-sys-color-secondary);
+  border-left: 3px solid var(--md-sys-color-secondary);
+}
+
+video::cue(.network) {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+
+/* VTT Cue Positioning */
+#cameraFeed::cue {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  text-align: left;
+  writing-mode: horizontal-tb;
+  max-width: 300px;
+}
+
+/* VTT Track styling for better visibility */
+video::-webkit-media-text-track-container {
+  position: relative;
+  z-index: 5;
+}
+
+video::-webkit-media-text-track-display {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+}

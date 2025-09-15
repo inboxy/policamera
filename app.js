@@ -4,12 +4,16 @@ class PoliCameraApp {
         this.capturedPhotos = [];
         this.isLocationWatching = false;
         this.locationWatchId = null;
+        this.vttTrack = null;
+        this.vttCues = [];
+        this.startTime = null;
 
         this.initializeElements();
         this.initializeEventListeners();
         this.initializeServiceWorker();
         this.initializeNetworkStatus();
         this.initializeDeviceOrientation();
+        this.initializeWebVTT();
     }
 
     initializeElements() {
@@ -36,6 +40,9 @@ class PoliCameraApp {
         this.alphaEl = document.getElementById('alpha');
         this.betaEl = document.getElementById('beta');
         this.gammaEl = document.getElementById('gamma');
+
+        // WebVTT elements
+        this.positionTrack = document.getElementById('positionTrack');
     }
 
     initializeEventListeners() {
@@ -125,6 +132,142 @@ class PoliCameraApp {
         this.alphaEl.textContent = `${alpha}°`;
         this.betaEl.textContent = `${beta}°`;
         this.gammaEl.textContent = `${gamma}°`;
+
+        // Update VTT cue with orientation data
+        this.updateVTTCue();
+    }
+
+    initializeWebVTT() {
+        // Initialize VTT track
+        this.vttTrack = this.positionTrack.track;
+        this.vttTrack.mode = 'showing';
+
+        // Create blob URL for VTT content
+        this.updateVTTTrack();
+
+        // Start timing for VTT cues
+        this.startTime = Date.now();
+    }
+
+    generateVTTContent() {
+        let vttContent = 'WEBVTT\n\n';
+
+        this.vttCues.forEach((cue, index) => {
+            vttContent += `${index + 1}\n`;
+            vttContent += `${this.formatTime(cue.startTime)} --> ${this.formatTime(cue.endTime)}\n`;
+            vttContent += `${cue.text}\n\n`;
+        });
+
+        return vttContent;
+    }
+
+    formatTime(milliseconds) {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const ms = milliseconds % 1000;
+
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+    }
+
+    updateVTTCue() {
+        if (!this.startTime || !this.stream) return;
+
+        const currentTime = Date.now() - this.startTime;
+        const location = this.getCurrentLocationData();
+        const orientation = this.getCurrentOrientationData();
+        const network = this.getNetworkInfo();
+
+        // Create cue text with position data
+        const cueText = this.formatCueText(location, orientation, network);
+
+        // Add new cue (replace last one if within 1 second)
+        if (this.vttCues.length > 0) {
+            const lastCue = this.vttCues[this.vttCues.length - 1];
+            if (currentTime - lastCue.startTime < 1000) {
+                // Update existing cue
+                lastCue.endTime = currentTime + 1000;
+                lastCue.text = cueText;
+            } else {
+                // Add new cue
+                this.addVTTCue(currentTime, cueText);
+            }
+        } else {
+            // First cue
+            this.addVTTCue(currentTime, cueText);
+        }
+
+        // Update the track
+        this.updateVTTTrack();
+    }
+
+    addVTTCue(startTime, text) {
+        const cue = {
+            startTime: startTime,
+            endTime: startTime + 1000, // 1 second duration
+            text: text
+        };
+
+        this.vttCues.push(cue);
+
+        // Keep only last 100 cues to prevent memory issues
+        if (this.vttCues.length > 100) {
+            this.vttCues.shift();
+        }
+    }
+
+    formatCueText(location, orientation, network) {
+        let text = '';
+
+        if (location.latitude !== '--') {
+            text += `📍 ${location.latitude}, ${location.longitude}\n`;
+            if (location.altitude !== '-- m') {
+                text += `🏔️ Alt: ${location.altitude}\n`;
+            }
+            text += `🎯 Acc: ${location.accuracy}\n`;
+        }
+
+        if (orientation.alpha !== '0°') {
+            text += `🧭 α${orientation.alpha} β${orientation.beta} γ${orientation.gamma}\n`;
+        }
+
+        text += `📶 ${network.online ? 'Online' : 'Offline'}`;
+        if (network.effectiveType && network.effectiveType !== 'unknown') {
+            text += ` (${network.effectiveType.toUpperCase()})`;
+        }
+
+        return text.trim();
+    }
+
+    getCurrentLocationData() {
+        return {
+            latitude: this.latitudeEl.textContent,
+            longitude: this.longitudeEl.textContent,
+            altitude: this.altitudeEl.textContent,
+            accuracy: this.accuracyEl.textContent
+        };
+    }
+
+    getCurrentOrientationData() {
+        return {
+            alpha: this.alphaEl.textContent,
+            beta: this.betaEl.textContent,
+            gamma: this.gammaEl.textContent
+        };
+    }
+
+    updateVTTTrack() {
+        const vttContent = this.generateVTTContent();
+        const blob = new Blob([vttContent], { type: 'text/vtt' });
+        const url = URL.createObjectURL(blob);
+
+        // Clean up previous URL
+        if (this.positionTrack.src) {
+            URL.revokeObjectURL(this.positionTrack.src);
+        }
+
+        this.positionTrack.src = url;
     }
 
     async startCamera() {
@@ -395,6 +538,9 @@ class PoliCameraApp {
         this.longitudeEl.textContent = longitude.toFixed(6);
         this.altitudeEl.textContent = altitude ? `${Math.round(altitude)} m` : '-- m';
         this.accuracyEl.textContent = `${Math.round(accuracy)} m`;
+
+        // Update VTT cue with location data
+        this.updateVTTCue();
     }
 
     handleLocationError(error) {
