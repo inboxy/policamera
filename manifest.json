@@ -1,32 +1,83 @@
 {
-  "name": "PoliCamera",
+  "name": "PoliCamera - Professional Camera App",
   "short_name": "PoliCamera",
-  "description": "A PWA camera app with geolocation, network, and device orientation features",
-  "start_url": "/",
+  "description": "Professional camera app with GPS tracking, network monitoring, and device orientation for documentation and evidence capture",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#000000",
   "theme_color": "#B4F222",
-  "orientation": "portrait",
+  "categories": ["photography", "utilities", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "permissions": [
-    "camera",
-    "geolocation"
+  "screenshots": [
+    {
+      "src": "screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Camera interface with GPS and network monitoring"
+    },
+    {
+      "src": "screenshot-narrow.png",
+      "sizes": "360x640",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile camera view"
+    }
   ],
-  "features": [
-    "camera",
-    "geolocation"
-  ]
+  "shortcuts": [
+    {
+      "name": "Start Camera",
+      "short_name": "Camera",
+      "description": "Quickly start camera with GPS tracking",
+      "url": "./",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "protocol_handlers": [],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "prefer_related_applications": false,
+  "related_applications": []
 }
