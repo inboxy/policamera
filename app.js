@@ -30,10 +30,6 @@ class PoliCameraApp {
         this.photosFab = document.getElementById('photosFab');
         this.photosOverlay = document.getElementById('photosOverlay');
 
-        // Network status elements (now in overlay)
-        this.networkStatus = document.getElementById('networkStatusOverlay');
-        this.statusIcon = this.networkStatus.querySelector('.material-icons');
-        this.statusText = this.networkStatus.querySelector('.status-text');
 
         // Location elements
         this.latitudeEl = document.getElementById('latitude');
@@ -77,33 +73,10 @@ class PoliCameraApp {
     }
 
     initializeNetworkStatus() {
-        this.updateNetworkStatus();
-
-        if ('connection' in navigator) {
-            navigator.connection.addEventListener('change', () => {
-                this.updateNetworkStatus();
-            });
-        }
-
-        window.addEventListener('online', () => this.updateNetworkStatus());
-        window.addEventListener('offline', () => this.updateNetworkStatus());
+        // Initialize the network manager with our status element
+        networkManager.initialize('networkStatusOverlay');
     }
 
-    updateNetworkStatus() {
-        const isOnline = navigator.onLine;
-        const connection = navigator.connection;
-
-        if (isOnline) {
-            this.statusIcon.textContent = 'wifi';
-            this.statusText.textContent = connection ?
-                `${connection.effectiveType.toUpperCase()}` : 'Online';
-            this.networkStatus.style.color = 'var(--md-sys-color-primary)';
-        } else {
-            this.statusIcon.textContent = 'wifi_off';
-            this.statusText.textContent = 'Offline';
-            this.networkStatus.style.color = 'var(--md-sys-color-error)';
-        }
-    }
 
     initializeDeviceOrientation() {
         if ('DeviceOrientationEvent' in window) {
@@ -181,7 +154,7 @@ class PoliCameraApp {
         const currentTime = Date.now() - this.startTime;
         const location = this.getCurrentLocationData();
         const orientation = this.getCurrentOrientationData();
-        const network = this.getNetworkInfo();
+        const network = networkManager.getNetworkInfo();
 
         // Create cue text with position data
         const cueText = this.formatCueText(location, orientation, network);
@@ -236,10 +209,7 @@ class PoliCameraApp {
             text += `🧭 α${orientation.alpha} β${orientation.beta} γ${orientation.gamma}\n`;
         }
 
-        text += `📶 ${network.online ? 'Online' : 'Offline'}`;
-        if (network.effectiveType && network.effectiveType !== 'unknown') {
-            text += ` (${network.effectiveType.toUpperCase()})`;
-        }
+        text += networkManager.getNetworkStatusText();
 
         return text.trim();
     }
@@ -456,7 +426,7 @@ class PoliCameraApp {
             timestamp: new Date().toISOString(),
             location: this.getCurrentLocation(),
             orientation: this.getCurrentOrientation(),
-            networkInfo: this.getNetworkInfo()
+            networkInfo: networkManager.getNetworkInfo()
         };
 
         this.capturedPhotos.push(photo);
@@ -484,15 +454,6 @@ class PoliCameraApp {
         };
     }
 
-    getNetworkInfo() {
-        const connection = navigator.connection;
-        return {
-            online: navigator.onLine,
-            effectiveType: connection ? connection.effectiveType : 'unknown',
-            downlink: connection ? connection.downlink : null,
-            rtt: connection ? connection.rtt : null
-        };
-    }
 
     showCaptureEffect() {
         const effect = document.createElement('div');
