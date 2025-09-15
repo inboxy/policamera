@@ -21,7 +21,6 @@ class PoliCameraApp {
         this.canvas = document.getElementById('canvas');
         this.startCameraBtn = document.getElementById('startCamera');
         this.captureBtn = document.getElementById('capturePhoto');
-        this.locationBtn = document.getElementById('toggleLocation');
         this.photosGrid = document.getElementById('photosGrid');
         this.captureFab = document.getElementById('captureFab');
 
@@ -49,7 +48,6 @@ class PoliCameraApp {
         this.startCameraBtn.addEventListener('click', () => this.startCamera());
         this.captureBtn.addEventListener('click', () => this.capturePhoto());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
-        this.locationBtn.addEventListener('click', () => this.toggleLocation());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -272,32 +270,153 @@ class PoliCameraApp {
 
     async startCamera() {
         try {
-            // Request camera permission
-            const constraints = {
-                video: {
-                    facingMode: 'environment', // Use back camera
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                }
-            };
-
-            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            this.video.srcObject = this.stream;
-
-            this.startCameraBtn.textContent = 'Camera Active';
+            // Update button state to show loading
+            this.startCameraBtn.innerHTML = `
+                <span class="material-icons">hourglass_empty</span>
+                <span class="label-large">Starting...</span>
+            `;
             this.startCameraBtn.disabled = true;
-            this.captureBtn.disabled = false;
-            this.captureFab.style.display = 'flex';
 
-            // Hide controls after 3 seconds
-            setTimeout(() => {
-                document.querySelector('.controls').style.transform = 'translateY(100%)';
-            }, 3000);
+            // Start camera and GPS simultaneously
+            const [cameraResult, locationResult] = await Promise.allSettled([
+                this.initializeCamera(),
+                this.initializeLocation()
+            ]);
+
+            // Check results
+            let cameraSuccess = cameraResult.status === 'fulfilled';
+            let locationSuccess = locationResult.status === 'fulfilled';
+
+            // Update UI based on results
+            this.updateStartButtonStatus(cameraSuccess, locationSuccess);
+
+            if (cameraSuccess) {
+                this.captureBtn.disabled = false;
+                this.captureFab.style.display = 'flex';
+
+                // Hide controls after 3 seconds
+                setTimeout(() => {
+                    document.querySelector('.controls').style.transform = 'translateY(100%)';
+                }, 3000);
+            }
+
+            // Show errors if any
+            if (!cameraSuccess) {
+                this.showError(`Camera: ${cameraResult.reason.message}`);
+            }
+            if (!locationSuccess) {
+                this.showError(`Location: ${locationResult.reason.message}`);
+            }
 
         } catch (error) {
-            console.error('Error accessing camera:', error);
-            this.showError('Camera access denied or not available');
+            console.error('Error starting camera and GPS:', error);
+            this.showError('Failed to start camera and GPS');
+            this.resetStartButton();
         }
+    }
+
+    async initializeCamera() {
+        const constraints = {
+            video: {
+                facingMode: 'environment', // Use back camera
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            }
+        };
+
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.video.srcObject = this.stream;
+        return true;
+    }
+
+    async initializeLocation() {
+        if (!navigator.geolocation) {
+            throw new Error('Geolocation not supported');
+        }
+
+        return new Promise((resolve, reject) => {
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000
+            };
+
+            // Start watching location
+            this.locationWatchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    this.updateLocation(position);
+                    if (!this.isLocationWatching) {
+                        this.isLocationWatching = true;
+                        resolve(true);
+                    }
+                },
+                (error) => {
+                    if (!this.isLocationWatching) {
+                        reject(new Error(this.getLocationErrorMessage(error)));
+                    }
+                },
+                options
+            );
+
+            // Also try to get immediate position
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    this.updateLocation(position);
+                    if (!this.isLocationWatching) {
+                        this.isLocationWatching = true;
+                        resolve(true);
+                    }
+                },
+                () => {}, // Ignore errors here, watchPosition will handle them
+                options
+            );
+        });
+    }
+
+    getLocationErrorMessage(error) {
+        switch (error.code) {
+            case error.PERMISSION_DENIED:
+                return 'Permission denied';
+            case error.POSITION_UNAVAILABLE:
+                return 'Position unavailable';
+            case error.TIMEOUT:
+                return 'Request timeout';
+            default:
+                return 'Unknown error';
+        }
+    }
+
+    updateStartButtonStatus(cameraSuccess, locationSuccess) {
+        if (cameraSuccess && locationSuccess) {
+            this.startCameraBtn.innerHTML = `
+                <span class="material-icons">check_circle</span>
+                <span class="label-large">Active (Camera + GPS)</span>
+            `;
+            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-primary)';
+        } else if (cameraSuccess) {
+            this.startCameraBtn.innerHTML = `
+                <span class="material-icons">videocam</span>
+                <span class="label-large">Camera Only</span>
+            `;
+            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
+        } else if (locationSuccess) {
+            this.startCameraBtn.innerHTML = `
+                <span class="material-icons">location_on</span>
+                <span class="label-large">GPS Only</span>
+            `;
+            this.startCameraBtn.style.backgroundColor = 'var(--md-sys-color-secondary-container)';
+        } else {
+            this.resetStartButton();
+        }
+    }
+
+    resetStartButton() {
+        this.startCameraBtn.innerHTML = `
+            <span class="material-icons">videocam</span>
+            <span class="label-large">Start Camera + GPS</span>
+        `;
+        this.startCameraBtn.disabled = false;
+        this.startCameraBtn.style.backgroundColor = '';
     }
 
     pauseCamera() {
@@ -479,57 +598,6 @@ class PoliCameraApp {
         document.body.appendChild(modal);
     }
 
-    toggleLocation() {
-        if (this.isLocationWatching) {
-            this.stopLocationTracking();
-        } else {
-            this.startLocationTracking();
-        }
-    }
-
-    startLocationTracking() {
-        if (!navigator.geolocation) {
-            this.showError('Geolocation not supported');
-            return;
-        }
-
-        const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 60000
-        };
-
-        this.locationWatchId = navigator.geolocation.watchPosition(
-            (position) => this.updateLocation(position),
-            (error) => this.handleLocationError(error),
-            options
-        );
-
-        this.isLocationWatching = true;
-        this.locationBtn.innerHTML = `
-            <span class="material-icons">location_off</span>
-            <span class="label-large">Stop Location</span>
-        `;
-    }
-
-    stopLocationTracking() {
-        if (this.locationWatchId) {
-            navigator.geolocation.clearWatch(this.locationWatchId);
-            this.locationWatchId = null;
-        }
-
-        this.isLocationWatching = false;
-        this.locationBtn.innerHTML = `
-            <span class="material-icons">my_location</span>
-            <span class="label-large">Get Location</span>
-        `;
-
-        // Clear location display
-        this.latitudeEl.textContent = '--';
-        this.longitudeEl.textContent = '--';
-        this.altitudeEl.textContent = '-- m';
-        this.accuracyEl.textContent = '-- m';
-    }
 
     updateLocation(position) {
         const { latitude, longitude, altitude, accuracy } = position.coords;
