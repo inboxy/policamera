@@ -14,6 +14,9 @@ class PoliCameraApp {
         this.initializeNetworkStatus();
         this.initializeDeviceOrientation();
         this.initializeWebVTT();
+
+        // Auto-start camera and GPS when page loads
+        this.autoStart();
     }
 
     initializeElements() {
@@ -266,6 +269,13 @@ class PoliCameraApp {
         }
 
         this.positionTrack.src = url;
+    }
+
+    async autoStart() {
+        // Small delay to ensure DOM is fully ready
+        setTimeout(() => {
+            this.startCamera();
+        }, 100);
     }
 
     async startCamera() {

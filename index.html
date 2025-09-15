@@ -31,57 +31,17 @@
                 </video>
                 <canvas id="canvas" style="display: none;"></canvas>
 
-                <div class="camera-overlay">
-                    <div class="info-card orientation-card" id="orientationCard">
-                        <div class="card-header">
-                            <span class="material-icons">screen_rotation</span>
-                            <span class="title-medium">Orientation</span>
-                        </div>
-                        <div class="card-content">
-                            <div class="orientation-data">
-                                <div class="data-row">
-                                    <span class="label-medium">Alpha:</span>
-                                    <span class="body-medium" id="alpha">0°</span>
-                                </div>
-                                <div class="data-row">
-                                    <span class="label-medium">Beta:</span>
-                                    <span class="body-medium" id="beta">0°</span>
-                                </div>
-                                <div class="data-row">
-                                    <span class="label-medium">Gamma:</span>
-                                    <span class="body-medium" id="gamma">0°</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="info-card location-card" id="locationCard">
-                        <div class="card-header">
-                            <span class="material-icons">location_on</span>
-                            <span class="title-medium">Location</span>
-                        </div>
-                        <div class="card-content">
-                            <div class="location-data">
-                                <div class="data-row">
-                                    <span class="label-medium">Latitude:</span>
-                                    <span class="body-medium" id="latitude">--</span>
-                                </div>
-                                <div class="data-row">
-                                    <span class="label-medium">Longitude:</span>
-                                    <span class="body-medium" id="longitude">--</span>
-                                </div>
-                                <div class="data-row">
-                                    <span class="label-medium">Altitude:</span>
-                                    <span class="body-medium" id="altitude">-- m</span>
-                                </div>
-                                <div class="data-row">
-                                    <span class="label-medium">Accuracy:</span>
-                                    <span class="body-medium" id="accuracy">-- m</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Hidden elements for data storage -->
+                <div style="display: none;">
+                    <span id="latitude">--</span>
+                    <span id="longitude">--</span>
+                    <span id="altitude">-- m</span>
+                    <span id="accuracy">-- m</span>
+                    <span id="alpha">0°</span>
+                    <span id="beta">0°</span>
+                    <span id="gamma">0°</span>
                 </div>
+
             </div>
 
             <div class="controls">

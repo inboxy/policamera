@@ -220,64 +220,6 @@ body {
   background-color: var(--md-sys-color-surface-variant);
 }
 
-/* Camera Overlay */
-.camera-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.info-card {
-  background-color: var(--md-sys-color-surface-container);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: var(--md-sys-elevation-level2);
-  backdrop-filter: blur(8px);
-  max-width: 280px;
-}
-
-.orientation-card {
-  align-self: flex-start;
-}
-
-.location-card {
-  align-self: flex-end;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--md-sys-color-primary);
-}
-
-.card-header .material-icons {
-  font-size: 20px;
-}
-
-.card-content {
-  color: var(--md-sys-color-on-surface);
-}
-
-.data-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.data-row:last-child {
-  margin-bottom: 0;
-}
 
 /* Controls */
 .controls {
@@ -455,10 +397,6 @@ body {
     align-items: flex-start;
   }
 
-  .info-card {
-    max-width: 200px;
-    padding: 12px;
-  }
 
   .controls {
     padding: 16px;
@@ -479,14 +417,6 @@ body {
 }
 
 @media (max-width: 480px) {
-  .camera-overlay {
-    padding: 12px;
-  }
-
-  .info-card {
-    max-width: 160px;
-    padding: 8px;
-  }
 
   .controls {
     flex-direction: column;
