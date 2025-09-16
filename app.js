@@ -36,6 +36,7 @@ class PoliCameraApp {
         this.captureFab = document.getElementById('captureFab');
         this.photosFab = document.getElementById('photosFab');
         this.settingsFab = document.getElementById('settingsFab');
+        this.qrFab = document.getElementById('qrFab');
         this.photosOverlay = document.getElementById('photosOverlay');
 
 
@@ -68,6 +69,7 @@ class PoliCameraApp {
         this.captureFab.addEventListener('click', () => this.capturePhoto());
         this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
+        this.qrFab.addEventListener('click', () => this.showQRCode());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -486,6 +488,115 @@ class PoliCameraApp {
     toggleSettings() {
         // For now, just show an alert - settings panel can be implemented later
         alert('Settings panel - coming soon!\n\nFeatures to be added:\n• Camera resolution settings\n• GPS update frequency\n• Data export options\n• Theme selection');
+    }
+
+    showQRCode() {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            background: var(--md-sys-color-surface-container);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            color: var(--md-sys-color-on-surface);
+        `;
+
+        const title = document.createElement('h2');
+        title.textContent = 'PoliCamera';
+        title.style.cssText = `
+            margin: 0 0 16px 0;
+            color: var(--md-sys-color-primary);
+            font-size: 24px;
+            font-weight: 500;
+        `;
+
+        const description = document.createElement('p');
+        description.textContent = 'Scan the QR code or visit the link below to access PoliCamera:';
+        description.style.cssText = `
+            margin: 0 0 20px 0;
+            font-size: 14px;
+            color: var(--md-sys-color-on-surface-variant);
+        `;
+
+        // Create QR code using a simple online generator
+        const qrImage = document.createElement('img');
+        const url = 'https://inboxy.github.io/policamera/';
+        qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+        qrImage.alt = 'PoliCamera QR Code';
+        qrImage.style.cssText = `
+            width: 200px;
+            height: 200px;
+            border-radius: 8px;
+            margin: 0 0 20px 0;
+            background: white;
+            padding: 8px;
+        `;
+
+        const linkContainer = document.createElement('div');
+        linkContainer.style.cssText = `
+            background: var(--md-sys-color-surface-variant);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 0 0 20px 0;
+            word-break: break-all;
+        `;
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.textContent = url;
+        link.target = '_blank';
+        link.style.cssText = `
+            color: var(--md-sys-color-primary);
+            text-decoration: none;
+            font-family: 'Doto', monospace;
+            font-size: 12px;
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.cssText = `
+            padding: 12px 24px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        `;
+        closeBtn.addEventListener('click', () => modal.remove());
+
+        linkContainer.appendChild(link);
+        modalContent.appendChild(title);
+        modalContent.appendChild(description);
+        modalContent.appendChild(qrImage);
+        modalContent.appendChild(linkContainer);
+        modalContent.appendChild(closeBtn);
+        modal.appendChild(modalContent);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        document.body.appendChild(modal);
     }
 
     pauseCamera() {
