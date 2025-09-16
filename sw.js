@@ -4,6 +4,7 @@ const urlsToCache = [
   '/index.html',
   '/styles.css',
   '/app.js',
+  '/network.js',
   '/manifest.json',
   'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap',
   'https://fonts.googleapis.com/icon?family=Material+Icons'
@@ -53,13 +54,19 @@ self.addEventListener('fetch', event => {
             return fetchResponse;
           }
 
-          // Clone the response
-          const responseToCache = fetchResponse.clone();
+          // Only cache GET requests for cacheable resources
+          if (event.request.method === 'GET' && event.request.url.startsWith(self.location.origin)) {
+            // Clone the response
+            const responseToCache = fetchResponse.clone();
 
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                cache.put(event.request, responseToCache);
+              })
+              .catch(error => {
+                console.warn('Failed to cache response:', error);
+              });
+          }
 
           return fetchResponse;
         });
@@ -101,8 +108,8 @@ self.addEventListener('push', event => {
     const data = event.data.json();
     const options = {
       body: data.body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
       vibrate: [100, 50, 100],
       data: {
         dateOfArrival: Date.now(),

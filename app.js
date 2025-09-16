@@ -7,6 +7,7 @@ class PoliCameraApp {
         this.vttTrack = null;
         this.vttCues = [];
         this.startTime = null;
+        this.currentVTTUrl = null;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -239,11 +240,12 @@ class PoliCameraApp {
         const url = URL.createObjectURL(blob);
 
         // Clean up previous URL
-        if (this.positionTrack.src) {
-            URL.revokeObjectURL(this.positionTrack.src);
+        if (this.currentVTTUrl) {
+            URL.revokeObjectURL(this.currentVTTUrl);
         }
 
         this.positionTrack.src = url;
+        this.currentVTTUrl = url;
     }
 
     async autoStart() {
@@ -288,7 +290,7 @@ class PoliCameraApp {
         } catch (error) {
             console.error('Error starting camera and GPS:', error);
             this.showError('Failed to start camera and GPS');
-            this.resetStartButton();
+            this.resetStartFab();
         }
     }
 
@@ -527,37 +529,55 @@ class PoliCameraApp {
             padding: 20px;
         `;
 
-        modal.innerHTML = `
-            <div style="
-                background: var(--md-sys-color-surface-container);
-                border-radius: 12px;
-                padding: 20px;
-                max-width: 90%;
-                max-height: 90%;
-                overflow-y: auto;
-                color: var(--md-sys-color-on-surface);
-            ">
-                <h3 style="margin-bottom: 16px; color: var(--md-sys-color-primary);">Photo Details</h3>
-                <img src="${photo.dataUrl}" style="width: 100%; max-width: 400px; border-radius: 8px; margin-bottom: 16px;">
-                <div style="display: grid; gap: 8px; font-size: 14px;">
-                    <div><strong>Timestamp:</strong> ${new Date(photo.timestamp).toLocaleString()}</div>
-                    <div><strong>Location:</strong> ${photo.location.latitude}, ${photo.location.longitude}</div>
-                    <div><strong>Altitude:</strong> ${photo.location.altitude}</div>
-                    <div><strong>Accuracy:</strong> ${photo.location.accuracy}</div>
-                    <div><strong>Orientation:</strong> α${photo.orientation.alpha} β${photo.orientation.beta} γ${photo.orientation.gamma}</div>
-                    <div><strong>Network:</strong> ${photo.networkInfo.online ? 'Online' : 'Offline'} (${photo.networkInfo.effectiveType})</div>
-                </div>
-                <button onclick="this.parentElement.parentElement.remove()" style="
-                    margin-top: 16px;
-                    padding: 8px 16px;
-                    background: var(--md-sys-color-primary);
-                    color: var(--md-sys-color-on-primary);
-                    border: none;
-                    border-radius: 20px;
-                    cursor: pointer;
-                ">Close</button>
-            </div>
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            background: var(--md-sys-color-surface-container);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            color: var(--md-sys-color-on-surface);
         `;
+
+        const title = document.createElement('h3');
+        title.textContent = 'Photo Details';
+        title.style.cssText = 'margin-bottom: 16px; color: var(--md-sys-color-primary);';
+
+        const img = document.createElement('img');
+        img.src = photo.dataUrl;
+        img.alt = 'Captured photo';
+        img.style.cssText = 'width: 100%; max-width: 400px; border-radius: 8px; margin-bottom: 16px;';
+
+        const details = document.createElement('div');
+        details.style.cssText = 'display: grid; gap: 8px; font-size: 14px;';
+        details.innerHTML = `
+            <div><strong>Timestamp:</strong> ${new Date(photo.timestamp).toLocaleString()}</div>
+            <div><strong>Location:</strong> ${this.escapeHtml(photo.location.latitude)}, ${this.escapeHtml(photo.location.longitude)}</div>
+            <div><strong>Altitude:</strong> ${this.escapeHtml(photo.location.altitude)}</div>
+            <div><strong>Accuracy:</strong> ${this.escapeHtml(photo.location.accuracy)}</div>
+            <div><strong>Orientation:</strong> α${this.escapeHtml(photo.orientation.alpha)} β${this.escapeHtml(photo.orientation.beta)} γ${this.escapeHtml(photo.orientation.gamma)}</div>
+            <div><strong>Network:</strong> ${photo.networkInfo.online ? 'Online' : 'Offline'} (${this.escapeHtml(photo.networkInfo.effectiveType)})</div>
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.cssText = `
+            margin-top: 16px;
+            padding: 8px 16px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        `;
+        closeBtn.addEventListener('click', () => modal.remove());
+
+        modalContent.appendChild(title);
+        modalContent.appendChild(img);
+        modalContent.appendChild(details);
+        modalContent.appendChild(closeBtn);
+        modal.appendChild(modalContent);
 
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -628,6 +648,12 @@ class PoliCameraApp {
         }
     }
 
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     showError(message) {
         const toast = document.createElement('div');
         toast.style.cssText = `
@@ -651,6 +677,20 @@ class PoliCameraApp {
                 toast.parentNode.removeChild(toast);
             }
         }, 4000);
+    }
+
+    cleanup() {
+        // Cleanup method for proper resource management
+        if (this.currentVTTUrl) {
+            URL.revokeObjectURL(this.currentVTTUrl);
+            this.currentVTTUrl = null;
+        }
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+        }
+        if (this.locationWatchId) {
+            navigator.geolocation.clearWatch(this.locationWatchId);
+        }
     }
 }
 

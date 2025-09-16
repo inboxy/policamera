@@ -17,7 +17,7 @@
     <div class="app">
         <main class="main">
             <div class="camera-container">
-                <video id="cameraFeed" autoplay playsinline>
+                <video id="cameraFeed" autoplay playsinline aria-label="Camera feed with GPS and orientation data overlay">
                     <track id="positionTrack" kind="subtitles" src="" srclang="en" label="Position Data" default>
                 </video>
                 <canvas id="canvas" style="display: none;"></canvas>
@@ -50,21 +50,21 @@
         </main>
 
         <!-- Floating Action Buttons -->
-        <div class="fab start-fab" id="startFab">
+        <button class="fab start-fab" id="startFab" aria-label="Start camera and GPS tracking">
             <span class="material-icons">videocam</span>
-        </div>
+        </button>
 
-        <div class="fab capture-fab" id="captureFab" style="display: none;">
+        <button class="fab capture-fab" id="captureFab" style="display: none;" aria-label="Capture photo">
             <span class="material-icons">camera_alt</span>
-        </div>
+        </button>
 
-        <div class="fab photos-fab" id="photosFab" style="display: none;">
+        <button class="fab photos-fab" id="photosFab" style="display: none;" aria-label="View captured photos">
             <span class="material-icons">photo_library</span>
-        </div>
+        </button>
 
-        <div class="fab settings-fab" id="settingsFab">
+        <button class="fab settings-fab" id="settingsFab" aria-label="Open settings">
             <span class="material-icons">settings</span>
-        </div>
+        </button>
     </div>
 
     <script src="network.js"></script>
