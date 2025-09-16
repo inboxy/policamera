@@ -1116,6 +1116,10 @@ class PoliCameraApp {
         }
         // Stop real-time detection
         this.stopRealTimeDetection();
+        // Cleanup AI worker
+        if (window.aiRecognitionManager) {
+            aiRecognitionManager.cleanup();
+        }
     }
 }
 

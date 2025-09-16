@@ -1,15 +1,89 @@
 /**
  * AI Image Recognition Module for PoliCamera
- * Uses TensorFlow.js with YOLO model for object detection
+ * Uses Web Worker with TensorFlow.js for non-blocking object detection
  */
 class AIRecognitionManager {
     constructor() {
-        this.model = null;
+        this.worker = null;
+        this.isWorkerSupported = typeof Worker !== 'undefined';
         this.isModelLoaded = false;
         this.isLoading = false;
-        this.modelUrl = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2';
+        this.messageId = 0;
+        this.pendingMessages = new Map();
         this.detectionThreshold = 0.5;
         this.maxDetections = 20;
+
+        // Fallback properties for non-worker mode
+        this.model = null;
+        this.modelUrl = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2';
+
+        this.initializeWorker();
+    }
+
+    /**
+     * Initialize Web Worker for AI processing
+     */
+    initializeWorker() {
+        if (!this.isWorkerSupported) {
+            console.warn('Web Workers not supported, falling back to main thread');
+            return;
+        }
+
+        try {
+            this.worker = new Worker('ai-worker.js');
+
+            this.worker.onmessage = (event) => {
+                const { id, success, data, error } = event.data;
+                const pending = this.pendingMessages.get(id);
+
+                if (pending) {
+                    this.pendingMessages.delete(id);
+                    if (success) {
+                        pending.resolve(data);
+                    } else {
+                        pending.reject(new Error(error || 'Worker processing failed'));
+                    }
+                }
+            };
+
+            this.worker.onerror = (error) => {
+                console.error('AI Worker error:', error);
+                // Fallback to main thread
+                this.worker = null;
+                this.isWorkerSupported = false;
+            };
+
+            console.log('AI Worker initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize AI Worker:', error);
+            this.worker = null;
+            this.isWorkerSupported = false;
+        }
+    }
+
+    /**
+     * Send message to worker
+     */
+    sendWorkerMessage(type, data = {}) {
+        return new Promise((resolve, reject) => {
+            if (!this.worker) {
+                reject(new Error('Worker not available'));
+                return;
+            }
+
+            const id = ++this.messageId;
+            this.pendingMessages.set(id, { resolve, reject });
+
+            this.worker.postMessage({ id, type, data });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (this.pendingMessages.has(id)) {
+                    this.pendingMessages.delete(id);
+                    reject(new Error('Worker timeout'));
+                }
+            }, 30000);
+        });
     }
 
     /**
@@ -25,6 +99,29 @@ class AIRecognitionManager {
         console.log('Loading AI model...');
 
         try {
+            if (this.worker) {
+                // Use worker
+                const result = await this.sendWorkerMessage('INIT_MODEL');
+                this.isModelLoaded = result.success;
+                return result.success;
+            } else {
+                // Fallback to main thread
+                return await this.initializeModelMainThread();
+            }
+        } catch (error) {
+            console.error('Failed to load AI model:', error);
+            this.isModelLoaded = false;
+            return false;
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    /**
+     * Fallback model initialization for main thread
+     */
+    async initializeModelMainThread() {
+        try {
             // Check if TensorFlow.js is available
             if (typeof tf === 'undefined') {
                 throw new Error('TensorFlow.js not loaded');
@@ -38,16 +135,12 @@ class AIRecognitionManager {
             // Load the model
             this.model = await cocoSsd.load();
             this.isModelLoaded = true;
-            console.log('AI model loaded successfully');
+            console.log('AI model loaded successfully (main thread)');
 
             return true;
-
         } catch (error) {
-            console.error('Failed to load AI model:', error);
-            this.isModelLoaded = false;
+            console.error('Failed to load AI model on main thread:', error);
             return false;
-        } finally {
-            this.isLoading = false;
         }
     }
 
@@ -66,7 +159,79 @@ class AIRecognitionManager {
         }
 
         try {
-            console.log('Running object detection...');
+            if (this.worker) {
+                // Use worker for detection
+                return await this.detectObjectsWorker(imageElement);
+            } else {
+                // Fallback to main thread
+                return await this.detectObjectsMainThread(imageElement);
+            }
+        } catch (error) {
+            console.error('Object detection failed:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Detect objects using Web Worker
+     */
+    async detectObjectsWorker(imageElement) {
+        try {
+            // Convert image element to ImageData
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Handle different element types
+            let width, height;
+            if (imageElement instanceof HTMLCanvasElement) {
+                width = imageElement.width;
+                height = imageElement.height;
+                ctx.drawImage(imageElement, 0, 0);
+            } else if (imageElement instanceof HTMLVideoElement) {
+                width = imageElement.videoWidth;
+                height = imageElement.videoHeight;
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(imageElement, 0, 0);
+            } else {
+                width = imageElement.naturalWidth || imageElement.width;
+                height = imageElement.naturalHeight || imageElement.height;
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(imageElement, 0, 0);
+            }
+
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, width, height);
+
+            // Send to worker
+            const result = await this.sendWorkerMessage('DETECT_OBJECTS', {
+                imageData: imageData.data.buffer,
+                width: width,
+                height: height
+            });
+
+            if (result.success) {
+                console.log(`Detected ${result.detections.length} objects (worker):`, result.detections);
+                return result.detections;
+            } else {
+                console.error('Worker detection failed:', result.error);
+                return [];
+            }
+
+        } catch (error) {
+            console.error('Worker detection error:', error);
+            // Fallback to main thread
+            return await this.detectObjectsMainThread(imageElement);
+        }
+    }
+
+    /**
+     * Fallback detection for main thread
+     */
+    async detectObjectsMainThread(imageElement) {
+        try {
+            console.log('Running object detection (main thread)...');
             const predictions = await this.model.detect(imageElement);
 
             // Filter predictions by confidence threshold
@@ -84,11 +249,11 @@ class AIRecognitionManager {
                     }
                 }));
 
-            console.log(`Detected ${filteredPredictions.length} objects:`, filteredPredictions);
+            console.log(`Detected ${filteredPredictions.length} objects (main thread):`, filteredPredictions);
             return filteredPredictions;
 
         } catch (error) {
-            console.error('Object detection failed:', error);
+            console.error('Main thread detection failed:', error);
             return [];
         }
     }
@@ -226,12 +391,24 @@ class AIRecognitionManager {
      * Update detection settings
      * @param {Object} settings
      */
-    updateSettings(settings) {
+    async updateSettings(settings) {
         if (settings.threshold !== undefined) {
             this.detectionThreshold = Math.max(0, Math.min(1, settings.threshold));
         }
         if (settings.maxDetections !== undefined) {
             this.maxDetections = Math.max(1, Math.min(100, settings.maxDetections));
+        }
+
+        // Update worker settings if available
+        if (this.worker) {
+            try {
+                await this.sendWorkerMessage('UPDATE_SETTINGS', {
+                    threshold: this.detectionThreshold,
+                    maxDetections: this.maxDetections
+                });
+            } catch (error) {
+                console.warn('Failed to update worker settings:', error);
+            }
         }
     }
 
@@ -282,6 +459,19 @@ class AIRecognitionManager {
             mostCommonClass: mostCommonClass,
             classBreakdown: classCounts
         };
+    }
+
+    /**
+     * Clean up resources
+     */
+    cleanup() {
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+        }
+        this.pendingMessages.clear();
+        this.isModelLoaded = false;
+        console.log('AI Recognition Manager cleaned up');
     }
 }
 
