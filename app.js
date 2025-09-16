@@ -154,8 +154,8 @@ class PoliCameraApp {
         this.userId = this.getCookie('policamera-userid');
 
         if (!this.userId) {
-            // Generate new 12-character user ID using nanoID
-            this.userId = nanoid(12);
+            // Generate new 12-character user ID using custom generator
+            this.userId = this.generateUserId(12);
 
             // Store in cookie with 1 year expiration
             this.setCookie('policamera-userid', this.userId, 365);
@@ -187,6 +187,28 @@ class PoliCameraApp {
             }
         }
         return null;
+    }
+
+    generateUserId(length) {
+        // Custom secure ID generator using crypto.getRandomValues
+        const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        const array = new Uint8Array(length);
+
+        if (crypto && crypto.getRandomValues) {
+            crypto.getRandomValues(array);
+        } else {
+            // Fallback for older browsers
+            for (let i = 0; i < length; i++) {
+                array[i] = Math.floor(Math.random() * 256);
+            }
+        }
+
+        let result = '';
+        for (let i = 0; i < length; i++) {
+            result += chars[array[i] % chars.length];
+        }
+
+        return result;
     }
 
     getUserId() {
