@@ -64,12 +64,12 @@ class AIWorker {
         }
 
         try {
-            // Create tensor from image data
-            const tensor = tf.browser.fromPixels({
-                data: new Uint8ClampedArray(imageData),
-                width: width,
-                height: height
-            });
+            // Create tensor from image data array
+            // Convert ArrayBuffer back to Uint8ClampedArray
+            const pixelData = new Uint8ClampedArray(imageData);
+
+            // Create tensor from pixels using the correct format for worker
+            const tensor = tf.tensor3d(pixelData, [height, width, 4]).slice([0, 0, 0], [height, width, 3]);
 
             // Run detection
             const predictions = await this.model.detect(tensor);

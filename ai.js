@@ -12,6 +12,8 @@ class AIRecognitionManager {
         this.pendingMessages = new Map();
         this.detectionThreshold = 0.5;
         this.maxDetections = 20;
+        this.workerFailureCount = 0;
+        this.maxWorkerFailures = 3;
 
         // Fallback properties for non-worker mode
         this.model = null;
@@ -159,7 +161,7 @@ class AIRecognitionManager {
         }
 
         try {
-            if (this.worker) {
+            if (this.worker && this.workerFailureCount < this.maxWorkerFailures) {
                 // Use worker for detection
                 return await this.detectObjectsWorker(imageElement);
             } else {
@@ -186,10 +188,18 @@ class AIRecognitionManager {
             if (imageElement instanceof HTMLCanvasElement) {
                 width = imageElement.width;
                 height = imageElement.height;
+                canvas.width = width;
+                canvas.height = height;
                 ctx.drawImage(imageElement, 0, 0);
             } else if (imageElement instanceof HTMLVideoElement) {
                 width = imageElement.videoWidth;
                 height = imageElement.videoHeight;
+
+                // Check if video dimensions are valid
+                if (width === 0 || height === 0) {
+                    throw new Error('Video not ready - invalid dimensions');
+                }
+
                 canvas.width = width;
                 canvas.height = height;
                 ctx.drawImage(imageElement, 0, 0);
@@ -213,14 +223,29 @@ class AIRecognitionManager {
 
             if (result.success) {
                 console.log(`Detected ${result.detections.length} objects (worker):`, result.detections);
+                // Reset failure count on success
+                this.workerFailureCount = 0;
                 return result.detections;
             } else {
                 console.error('Worker detection failed:', result.error);
-                return [];
+                this.workerFailureCount++;
+
+                if (this.workerFailureCount >= this.maxWorkerFailures) {
+                    console.warn('Worker failed too many times, switching to main thread permanently');
+                }
+
+                // Fallback to main thread
+                return await this.detectObjectsMainThread(imageElement);
             }
 
         } catch (error) {
             console.error('Worker detection error:', error);
+            this.workerFailureCount++;
+
+            if (this.workerFailureCount >= this.maxWorkerFailures) {
+                console.warn('Worker failed too many times, switching to main thread permanently');
+            }
+
             // Fallback to main thread
             return await this.detectObjectsMainThread(imageElement);
         }
