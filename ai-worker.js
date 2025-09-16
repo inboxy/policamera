@@ -68,14 +68,31 @@ class AIWorker {
             // Convert ArrayBuffer back to Uint8ClampedArray
             const pixelData = new Uint8ClampedArray(imageData);
 
-            // Create tensor from pixels using the correct format for worker
-            const tensor = tf.tensor3d(pixelData, [height, width, 4]).slice([0, 0, 0], [height, width, 3]);
+            let predictions;
 
-            // Run detection
-            const predictions = await this.model.detect(tensor);
+            // Create OffscreenCanvas for worker environment
+            if (typeof OffscreenCanvas !== 'undefined') {
+                const offscreenCanvas = new OffscreenCanvas(width, height);
+                const ctx = offscreenCanvas.getContext('2d');
 
-            // Clean up tensor
-            tensor.dispose();
+                // Create ImageData and put it on the canvas
+                const imageDataObj = new ImageData(pixelData, width, height);
+                ctx.putImageData(imageDataObj, 0, 0);
+
+                // Run detection on OffscreenCanvas
+                predictions = await this.model.detect(offscreenCanvas);
+            } else {
+                // Fallback: create tensor manually
+                const tensor = tf.tensor3d(pixelData, [height, width, 4]);
+
+                // Convert RGBA to RGB by slicing the alpha channel
+                const rgbTensor = tensor.slice([0, 0, 0], [height, width, 3]);
+                tensor.dispose();
+
+                // Run detection on tensor
+                predictions = await this.model.detect(rgbTensor);
+                rgbTensor.dispose();
+            }
 
             // Filter and format predictions
             const filteredPredictions = predictions
