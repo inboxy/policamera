@@ -423,18 +423,18 @@ body {
   border: 2px solid var(--md-sys-color-outline);
 }
 
-/* Settings FAB */
-.settings-fab {
-  top: 24px;
+/* QR Code FAB */
+.qr-fab {
+  bottom: 176px;
   right: 24px;
   background-color: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface);
   border: 2px solid var(--md-sys-color-outline);
 }
 
-/* QR Code FAB */
-.qr-fab {
-  top: 100px;
+/* Settings FAB */
+.settings-fab {
+  top: 24px;
   right: 24px;
   background-color: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface);
@@ -536,13 +536,13 @@ body {
     right: 16px;
   }
 
-  .settings-fab {
-    top: 16px;
+  .qr-fab {
+    bottom: 144px;
     right: 16px;
   }
 
-  .qr-fab {
-    top: 80px;
+  .settings-fab {
+    top: 16px;
     right: 16px;
   }
 }

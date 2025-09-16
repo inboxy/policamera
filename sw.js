@@ -5,6 +5,7 @@ const urlsToCache = [
   '/styles.css',
   '/app.js',
   '/database.js',
+  '/qr.js',
   '/network.js',
   '/manifest.json',
   'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap',
