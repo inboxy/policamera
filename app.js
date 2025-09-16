@@ -9,6 +9,8 @@ class PoliCameraApp {
         this.startTime = null;
         this.currentVTTUrl = null;
         this.userId = null;
+        this.detectionInterval = null;
+        this.isDetectionRunning = false;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -29,6 +31,7 @@ class PoliCameraApp {
     initializeElements() {
         this.video = document.getElementById('cameraFeed');
         this.canvas = document.getElementById('canvas');
+        this.detectionOverlay = document.getElementById('detectionOverlay');
         this.photosGrid = document.getElementById('photosGrid');
 
         // FAB elements
@@ -418,6 +421,13 @@ class PoliCameraApp {
 
         this.stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.video.srcObject = this.stream;
+
+        // Wait for video to be ready and start real-time detection
+        this.video.addEventListener('loadedmetadata', () => {
+            this.setupDetectionOverlay();
+            this.startRealTimeDetection();
+        });
+
         return true;
     }
 
@@ -937,6 +947,133 @@ class PoliCameraApp {
         return div.innerHTML;
     }
 
+    setupDetectionOverlay() {
+        if (!this.detectionOverlay || !this.video) return;
+
+        // Set overlay canvas size to match video dimensions
+        const resizeOverlay = () => {
+            const rect = this.video.getBoundingClientRect();
+            this.detectionOverlay.width = rect.width;
+            this.detectionOverlay.height = rect.height;
+        };
+
+        // Initial resize
+        resizeOverlay();
+
+        // Resize on window resize
+        window.addEventListener('resize', resizeOverlay);
+    }
+
+    async startRealTimeDetection() {
+        if (this.isDetectionRunning || !window.aiRecognitionManager) return;
+
+        try {
+            // Initialize AI model if not already loaded
+            const isLoaded = await aiRecognitionManager.initializeModel();
+            if (!isLoaded) {
+                console.warn('AI model failed to load, real-time detection disabled');
+                return;
+            }
+
+            this.isDetectionRunning = true;
+            console.log('Starting real-time AI detection...');
+
+            // Run detection every 1000ms (1 second) for performance
+            this.detectionInterval = setInterval(async () => {
+                await this.runDetectionFrame();
+            }, 1000);
+
+        } catch (error) {
+            console.error('Failed to start real-time detection:', error);
+            this.isDetectionRunning = false;
+        }
+    }
+
+    async runDetectionFrame() {
+        if (!this.isDetectionRunning || !this.video || !this.detectionOverlay) return;
+
+        try {
+            // Create a temporary canvas to capture video frame
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCanvas.width = this.video.videoWidth;
+            tempCanvas.height = this.video.videoHeight;
+
+            // Draw current video frame
+            tempCtx.drawImage(this.video, 0, 0);
+
+            // Run AI detection on the frame
+            const detections = await aiRecognitionManager.detectObjects(tempCanvas);
+
+            // Draw detection results on overlay
+            this.drawRealtimeDetections(detections);
+
+        } catch (error) {
+            console.error('Detection frame error:', error);
+        }
+    }
+
+    drawRealtimeDetections(detections) {
+        if (!this.detectionOverlay || !detections) return;
+
+        const ctx = this.detectionOverlay.getContext('2d');
+
+        // Clear previous detections
+        ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
+
+        if (detections.length === 0) return;
+
+        // Calculate scale factors to match video display
+        const videoRect = this.video.getBoundingClientRect();
+        const scaleX = videoRect.width / this.video.videoWidth;
+        const scaleY = videoRect.height / this.video.videoHeight;
+
+        detections.forEach(detection => {
+            const { bbox, class: className, confidence } = detection;
+
+            // Scale bounding box to overlay dimensions
+            const x = bbox.x * scaleX;
+            const y = bbox.y * scaleY;
+            const width = bbox.width * scaleX;
+            const height = bbox.height * scaleY;
+
+            // Draw bounding box
+            ctx.strokeStyle = '#B4F222';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+
+            // Draw label background
+            const label = `${className} ${confidence}%`;
+            ctx.font = 'bold 14px Arial';
+            const textMetrics = ctx.measureText(label);
+            const textWidth = textMetrics.width;
+
+            ctx.fillStyle = 'rgba(180, 242, 34, 0.9)';
+            ctx.fillRect(x, y - 25, textWidth + 10, 20);
+
+            // Draw label text
+            ctx.fillStyle = '#000';
+            ctx.fillText(label, x + 5, y - 10);
+        });
+    }
+
+    stopRealTimeDetection() {
+        if (this.detectionInterval) {
+            clearInterval(this.detectionInterval);
+            this.detectionInterval = null;
+        }
+        this.isDetectionRunning = false;
+
+        // Clear overlay
+        if (this.detectionOverlay) {
+            const ctx = this.detectionOverlay.getContext('2d');
+            ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
+        }
+
+        console.log('Real-time detection stopped');
+    }
+
     showError(message) {
         const toast = document.createElement('div');
         toast.style.cssText = `
@@ -977,6 +1114,8 @@ class PoliCameraApp {
         if (this.gpsUpdateInterval) {
             clearInterval(this.gpsUpdateInterval);
         }
+        // Stop real-time detection
+        this.stopRealTimeDetection();
     }
 }
 
