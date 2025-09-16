@@ -54,6 +54,7 @@ class PoliCameraApp {
         // GPS Display elements
         this.gpsLatDisplayEl = document.getElementById('gpsLatDisplay');
         this.gpsLonDisplayEl = document.getElementById('gpsLonDisplay');
+        this.gpsUserIdDisplayEl = document.getElementById('gpsUserIdDisplay');
         this.gpsAltDisplayEl = document.getElementById('gpsAltDisplay');
         this.gpsAccDisplayEl = document.getElementById('gpsAccDisplay');
         this.gpsTimeDisplayEl = document.getElementById('gpsTimeDisplay');
@@ -729,6 +730,7 @@ class PoliCameraApp {
         // Update GPS coordinates display
         this.gpsLatDisplayEl.textContent = this.latitudeEl.textContent;
         this.gpsLonDisplayEl.textContent = this.longitudeEl.textContent;
+        this.gpsUserIdDisplayEl.textContent = this.userId || '--';
         this.gpsAltDisplayEl.textContent = this.altitudeEl.textContent;
         this.gpsAccDisplayEl.textContent = this.accuracyEl.textContent;
 
