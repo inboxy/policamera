@@ -11,7 +11,7 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap',
   'https://fonts.googleapis.com/css2?family=Doto:wght@100;200;300;400;500;600;700;800;900&display=swap',
   'https://fonts.googleapis.com/icon?family=Material+Icons',
-  'https://cdn.jsdelivr.net/npm/nanoid@5/nanoid.js'
+  'https://cdn.jsdelivr.net/npm/nanoid@5/index.browser.js'
 ];
 
 // Install event - cache resources
