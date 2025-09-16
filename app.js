@@ -162,12 +162,12 @@ class PoliCameraApp {
         // Create cue text with position data
         const cueText = this.formatCueText(location, orientation, network);
 
-        // Add new cue (replace last one if within 1 second)
+        // Add new cue (replace last one if within 500ms for faster updates)
         if (this.vttCues.length > 0) {
             const lastCue = this.vttCues[this.vttCues.length - 1];
-            if (currentTime - lastCue.startTime < 1000) {
+            if (currentTime - lastCue.startTime < 500) {
                 // Update existing cue
-                lastCue.endTime = currentTime + 1000;
+                lastCue.endTime = currentTime + 500;
                 lastCue.text = cueText;
             } else {
                 // Add new cue
@@ -185,7 +185,7 @@ class PoliCameraApp {
     addVTTCue(startTime, text) {
         const cue = {
             startTime: startTime,
-            endTime: startTime + 1000, // 1 second duration
+            endTime: startTime + 500, // 500ms duration for faster updates
             text: text
         };
 
@@ -201,18 +201,34 @@ class PoliCameraApp {
         let text = '';
 
         if (location.latitude !== '--') {
-            text += `📍 ${location.latitude}, ${location.longitude}\n`;
+            // Primary GPS coordinates - make them prominent
+            text += `GPS COORDINATES\n`;
+            text += `LAT: ${location.latitude}\n`;
+            text += `LON: ${location.longitude}\n`;
+
+            // Secondary GPS info
             if (location.altitude !== '-- m') {
-                text += `🏔️ Alt: ${location.altitude}\n`;
+                text += `ALT: ${location.altitude}\n`;
             }
-            text += `🎯 Acc: ${location.accuracy}\n`;
+            text += `ACC: ${location.accuracy}\n`;
+        } else {
+            text += `GPS: SEARCHING...\n`;
         }
 
+        // Add timestamp
+        const now = new Date();
+        text += `TIME: ${now.toLocaleTimeString()}\n`;
+
+        // Add orientation data if available
         if (orientation.alpha !== '0°') {
-            text += `🧭 α${orientation.alpha} β${orientation.beta} γ${orientation.gamma}\n`;
+            text += `HEADING: ${orientation.alpha}\n`;
         }
 
-        text += networkManager.getNetworkStatusText();
+        // Network status
+        text += `${network.online ? 'ONLINE' : 'OFFLINE'}`;
+        if (network.effectiveType && network.effectiveType !== 'unknown') {
+            text += ` (${network.effectiveType.toUpperCase()})`;
+        }
 
         return text.trim();
     }
