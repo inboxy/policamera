@@ -208,6 +208,73 @@ body {
 }
 
 
+/* GPS Coordinates Overlay */
+.gps-overlay {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 15;
+  background-color: rgba(20, 21, 20, 0.95);
+  border: 2px solid var(--md-sys-color-primary);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: 'Doto', 'Courier New', monospace;
+  color: var(--md-sys-color-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  min-width: 280px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.gps-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--md-sys-color-primary);
+  padding-bottom: 8px;
+}
+
+.gps-coords {
+  margin-bottom: 10px;
+}
+
+.gps-lat, .gps-lon {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--md-sys-color-primary);
+}
+
+.gps-details {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  line-height: 1.4;
+}
+
+.gps-details > div {
+  margin-bottom: 2px;
+}
+
+.gps-alt, .gps-acc, .gps-time, .gps-heading, .gps-network {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#gpsLatDisplay, #gpsLonDisplay {
+  font-weight: 700;
+  color: #B4F222;
+  text-shadow: 0 0 4px rgba(180, 242, 34, 0.3);
+}
+
+#gpsAltDisplay, #gpsAccDisplay, #gpsTimeDisplay, #gpsHeadingDisplay, #gpsNetworkDisplay {
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+}
+
 /* Status Overlay */
 .status-overlay {
   position: absolute;
@@ -406,6 +473,16 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  .gps-overlay {
+    min-width: 240px;
+    padding: 12px;
+    font-size: 90%;
+  }
+
+  .gps-lat, .gps-lon {
+    font-size: 14px;
+  }
+
   .photos-grid {
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
     gap: 8px;
@@ -413,6 +490,23 @@ body {
 }
 
 @media (max-width: 480px) {
+  .gps-overlay {
+    min-width: 200px;
+    padding: 10px;
+    font-size: 85%;
+    top: 10px;
+    left: 10px;
+  }
+
+  .gps-lat, .gps-lon {
+    font-size: 13px;
+  }
+
+  .gps-title {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
   .fab {
     width: 48px;
     height: 48px;

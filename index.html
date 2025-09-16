@@ -6,6 +6,7 @@
     <title>PoliCamera</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@100;200;300;400;500;600;700;800;900&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
     <link rel="stylesheet" href="styles.css">
     <meta name="theme-color" content="#B4F222">
@@ -33,6 +34,22 @@
                     <span id="gamma">0°</span>
                 </div>
 
+            </div>
+
+            <!-- GPS Coordinates Overlay -->
+            <div class="gps-overlay" id="gpsOverlay">
+                <div class="gps-title">GPS COORDINATES</div>
+                <div class="gps-coords">
+                    <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
+                    <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                </div>
+                <div class="gps-details">
+                    <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
+                    <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
+                    <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
+                    <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
+                    <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
+                </div>
             </div>
 
             <!-- Status overlay -->

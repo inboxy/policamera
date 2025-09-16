@@ -18,6 +18,9 @@ class PoliCameraApp {
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
+
+        // Start GPS display updates
+        this.startGPSDisplayUpdates();
     }
 
     initializeElements() {
@@ -43,6 +46,15 @@ class PoliCameraApp {
         this.alphaEl = document.getElementById('alpha');
         this.betaEl = document.getElementById('beta');
         this.gammaEl = document.getElementById('gamma');
+
+        // GPS Display elements
+        this.gpsLatDisplayEl = document.getElementById('gpsLatDisplay');
+        this.gpsLonDisplayEl = document.getElementById('gpsLonDisplay');
+        this.gpsAltDisplayEl = document.getElementById('gpsAltDisplay');
+        this.gpsAccDisplayEl = document.getElementById('gpsAccDisplay');
+        this.gpsTimeDisplayEl = document.getElementById('gpsTimeDisplay');
+        this.gpsHeadingDisplayEl = document.getElementById('gpsHeadingDisplay');
+        this.gpsNetworkDisplayEl = document.getElementById('gpsNetworkDisplay');
 
         // WebVTT elements
         this.positionTrack = document.getElementById('positionTrack');
@@ -112,6 +124,9 @@ class PoliCameraApp {
         this.alphaEl.textContent = `${alpha}°`;
         this.betaEl.textContent = `${beta}°`;
         this.gammaEl.textContent = `${gamma}°`;
+
+        // Update permanent GPS display
+        this.updateGPSDisplay();
 
         // Update VTT cue with orientation data
         this.updateVTTCue();
@@ -613,8 +628,43 @@ class PoliCameraApp {
         this.altitudeEl.textContent = altitude ? `${Math.round(altitude)} m` : '-- m';
         this.accuracyEl.textContent = `${Math.round(accuracy)} m`;
 
+        // Update permanent GPS display
+        this.updateGPSDisplay();
+
         // Update VTT cue with location data
         this.updateVTTCue();
+    }
+
+    updateGPSDisplay() {
+        // Update GPS coordinates display
+        this.gpsLatDisplayEl.textContent = this.latitudeEl.textContent;
+        this.gpsLonDisplayEl.textContent = this.longitudeEl.textContent;
+        this.gpsAltDisplayEl.textContent = this.altitudeEl.textContent;
+        this.gpsAccDisplayEl.textContent = this.accuracyEl.textContent;
+
+        // Update time
+        const now = new Date();
+        this.gpsTimeDisplayEl.textContent = now.toLocaleTimeString();
+
+        // Update heading (alpha orientation)
+        this.gpsHeadingDisplayEl.textContent = this.alphaEl.textContent;
+
+        // Update network status
+        const networkInfo = networkManager.getNetworkInfo();
+        const networkText = networkInfo.online ?
+            (networkInfo.effectiveType ? networkInfo.effectiveType.toUpperCase() : 'ONLINE') :
+            'OFFLINE';
+        this.gpsNetworkDisplayEl.textContent = networkText;
+    }
+
+    startGPSDisplayUpdates() {
+        // Initial update
+        this.updateGPSDisplay();
+
+        // Update every 500ms for real-time display
+        this.gpsUpdateInterval = setInterval(() => {
+            this.updateGPSDisplay();
+        }, 500);
     }
 
     handleLocationError(error) {
@@ -706,6 +756,9 @@ class PoliCameraApp {
         }
         if (this.locationWatchId) {
             navigator.geolocation.clearWatch(this.locationWatchId);
+        }
+        if (this.gpsUpdateInterval) {
+            clearInterval(this.gpsUpdateInterval);
         }
     }
 }
