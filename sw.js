@@ -7,6 +7,7 @@ const urlsToCache = [
   '/database.js',
   '/qr.js',
   '/network.js',
+  '/ai.js',
   '/manifest.json',
   'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap',
   'https://fonts.googleapis.com/css2?family=Doto:wght@100;200;300;400;500;600;700;800;900&display=swap',

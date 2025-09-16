@@ -529,7 +529,7 @@ class PoliCameraApp {
         }
     }
 
-    capturePhoto() {
+    async capturePhoto() {
         if (!this.stream) return;
 
         const canvas = this.canvas;
@@ -545,6 +545,18 @@ class PoliCameraApp {
         // Get image data
         const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
+        // Run AI analysis on the captured image
+        let aiAnalysis = null;
+        if (window.aiRecognitionManager && aiRecognitionManager.isSupported()) {
+            try {
+                console.log('Running AI analysis on captured photo...');
+                aiAnalysis = await aiRecognitionManager.analyzeImage(canvas);
+                console.log('AI Analysis results:', aiAnalysis);
+            } catch (error) {
+                console.error('AI analysis failed:', error);
+            }
+        }
+
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
@@ -553,7 +565,8 @@ class PoliCameraApp {
             timestamp: new Date().toISOString(),
             location: this.getCurrentLocation(),
             orientation: this.getCurrentOrientation(),
-            networkInfo: networkManager.getNetworkInfo()
+            networkInfo: networkManager.getNetworkInfo(),
+            aiAnalysis: aiAnalysis
         };
 
         this.capturedPhotos.push(photo);
@@ -672,7 +685,9 @@ class PoliCameraApp {
 
         const details = document.createElement('div');
         details.style.cssText = 'display: grid; gap: 8px; font-size: 14px;';
-        details.innerHTML = `
+
+        // Basic metadata
+        const basicInfo = `
             <div><strong>User ID:</strong> ${this.escapeHtml(photo.userId || 'Unknown')}</div>
             <div><strong>Timestamp:</strong> ${new Date(photo.timestamp).toLocaleString()}</div>
             <div><strong>Location:</strong> ${this.escapeHtml(photo.location.latitude)}, ${this.escapeHtml(photo.location.longitude)}</div>
@@ -681,6 +696,46 @@ class PoliCameraApp {
             <div><strong>Orientation:</strong> α${this.escapeHtml(photo.orientation.alpha)} β${this.escapeHtml(photo.orientation.beta)} γ${this.escapeHtml(photo.orientation.gamma)}</div>
             <div><strong>Network:</strong> ${photo.networkInfo.online ? 'Online' : 'Offline'} (${this.escapeHtml(photo.networkInfo.effectiveType)})</div>
         `;
+
+        // AI analysis section
+        let aiInfo = '';
+        if (photo.aiAnalysis) {
+            if (photo.aiAnalysis.success && photo.aiAnalysis.detections.length > 0) {
+                aiInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🤖 AI Analysis:</strong></div>
+                    <div style="margin-left: 16px;">
+                        <div><strong>Summary:</strong> ${this.escapeHtml(photo.aiAnalysis.summary)}</div>
+                        <div><strong>Objects Found:</strong> ${photo.aiAnalysis.detections.length}</div>
+                        <div style="margin-top: 8px;">
+                `;
+
+                photo.aiAnalysis.detections.forEach((detection, index) => {
+                    aiInfo += `
+                        <div style="margin: 4px 0; padding: 4px 8px; background: var(--md-sys-color-surface-variant); border-radius: 4px;">
+                            <strong>${this.escapeHtml(detection.class)}</strong> (${detection.confidence}% confidence)
+                        </div>
+                    `;
+                });
+
+                aiInfo += `
+                        </div>
+                    </div>
+                `;
+            } else if (photo.aiAnalysis.success) {
+                aiInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🤖 AI Analysis:</strong> No objects detected</div>
+                `;
+            } else {
+                aiInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🤖 AI Analysis:</strong> Analysis failed</div>
+                `;
+            }
+        }
+
+        details.innerHTML = basicInfo + aiInfo;
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
