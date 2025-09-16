@@ -8,6 +8,7 @@ class PoliCameraApp {
         this.vttCues = [];
         this.startTime = null;
         this.currentVTTUrl = null;
+        this.userId = null;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -15,6 +16,8 @@ class PoliCameraApp {
         this.initializeNetworkStatus();
         this.initializeDeviceOrientation();
         this.initializeWebVTT();
+        this.initializeUserId();
+        this.initializeDatabase();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
@@ -142,6 +145,60 @@ class PoliCameraApp {
 
         // Start timing for VTT cues
         this.startTime = Date.now();
+    }
+
+    initializeUserId() {
+        // Try to get existing user ID from cookie
+        this.userId = this.getCookie('policamera-userid');
+
+        if (!this.userId) {
+            // Generate new 12-character user ID using nanoID
+            this.userId = nanoid(12);
+
+            // Store in cookie with 1 year expiration
+            this.setCookie('policamera-userid', this.userId, 365);
+
+            console.log('Generated new user ID:', this.userId);
+        } else {
+            console.log('Found existing user ID:', this.userId);
+        }
+    }
+
+    setCookie(name, value, days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        const expires = `expires=${date.toUTCString()}`;
+        document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict`;
+    }
+
+    getCookie(name) {
+        const nameEQ = name + "=";
+        const cookies = document.cookie.split(';');
+
+        for (let i = 0; i < cookies.length; i++) {
+            let cookie = cookies[i];
+            while (cookie.charAt(0) === ' ') {
+                cookie = cookie.substring(1, cookie.length);
+            }
+            if (cookie.indexOf(nameEQ) === 0) {
+                return cookie.substring(nameEQ.length, cookie.length);
+            }
+        }
+        return null;
+    }
+
+    getUserId() {
+        return this.userId;
+    }
+
+    async initializeDatabase() {
+        try {
+            await databaseManager.init();
+            console.log('Database initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize database:', error);
+            this.showError('Database initialization failed');
+        }
     }
 
     generateVTTContent() {
@@ -462,6 +519,7 @@ class PoliCameraApp {
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
+            userId: this.userId,
             dataUrl: imageDataUrl,
             timestamp: new Date().toISOString(),
             location: this.getCurrentLocation(),
@@ -472,6 +530,9 @@ class PoliCameraApp {
         this.capturedPhotos.push(photo);
         this.displayPhoto(photo);
         this.savePhotoToStorage(photo);
+
+        // Store in IndexedDB
+        this.savePhotoToDatabase(photo);
 
         // Show capture feedback
         this.showCaptureEffect();
@@ -583,6 +644,7 @@ class PoliCameraApp {
         const details = document.createElement('div');
         details.style.cssText = 'display: grid; gap: 8px; font-size: 14px;';
         details.innerHTML = `
+            <div><strong>User ID:</strong> ${this.escapeHtml(photo.userId || 'Unknown')}</div>
             <div><strong>Timestamp:</strong> ${new Date(photo.timestamp).toLocaleString()}</div>
             <div><strong>Location:</strong> ${this.escapeHtml(photo.location.latitude)}, ${this.escapeHtml(photo.location.longitude)}</div>
             <div><strong>Altitude:</strong> ${this.escapeHtml(photo.location.altitude)}</div>
@@ -698,6 +760,76 @@ class PoliCameraApp {
         } catch (error) {
             console.warn('Failed to save photo metadata to storage:', error);
         }
+    }
+
+    async savePhotoToDatabase(photo) {
+        try {
+            const imageName = `photo_${photo.id}_${this.userId}.jpg`;
+
+            const photoData = {
+                userId: photo.userId,
+                location: photo.location,
+                error: this.getLocationError(),
+                imageName: imageName,
+                imageData: photo.dataUrl,
+                orientation: photo.orientation,
+                networkInfo: photo.networkInfo
+            };
+
+            const recordId = await databaseManager.storePhoto(photoData);
+            console.log('Photo stored in database with ID:', recordId);
+
+            // Also log GPS coordinates
+            await this.saveGPSLogToDatabase();
+
+        } catch (error) {
+            console.error('Failed to save photo to database:', error);
+            this.showError('Failed to save photo data');
+        }
+    }
+
+    async saveGPSLogToDatabase() {
+        try {
+            const gpsData = {
+                userId: this.userId,
+                lat: parseFloat(this.latitudeEl.textContent) || null,
+                lon: parseFloat(this.longitudeEl.textContent) || null,
+                alt: this.parseAltitude(this.altitudeEl.textContent),
+                accuracy: this.parseAccuracy(this.accuracyEl.textContent),
+                error: this.getLocationError(),
+                heading: this.parseHeading(this.alphaEl.textContent)
+            };
+
+            await databaseManager.storeGPSLog(gpsData);
+        } catch (error) {
+            console.error('Failed to save GPS log to database:', error);
+        }
+    }
+
+    getLocationError() {
+        // Return error if GPS coordinates are not available
+        if (this.latitudeEl.textContent === '--' || this.longitudeEl.textContent === '--') {
+            return 'GPS coordinates not available';
+        }
+        return null;
+    }
+
+    parseAltitude(altText) {
+        if (altText === '-- m') return null;
+        const match = altText.match(/^(\d+)/);
+        return match ? parseInt(match[1]) : null;
+    }
+
+    parseAccuracy(accText) {
+        if (accText === '-- m') return null;
+        const match = accText.match(/^(\d+)/);
+        return match ? parseInt(match[1]) : null;
+    }
+
+    parseHeading(headingText) {
+        if (headingText === '0°') return null;
+        const match = headingText.match(/^(\d+)/);
+        return match ? parseInt(match[1]) : null;
     }
 
     loadPhotosFromStorage() {
