@@ -9,8 +9,30 @@ class ImageStitcher {
 
     async loadImages(imageSources) {
         this.images = [];
-        const loadPromises = imageSources.map(src => this.loadImage(src));
-        this.images = await Promise.all(loadPromises);
+
+        if (!imageSources || !Array.isArray(imageSources)) {
+            throw new Error('Invalid image sources provided');
+        }
+
+        const loadPromises = imageSources.map(async (src, index) => {
+            try {
+                return await this.loadImage(src);
+            } catch (error) {
+                console.error(`Failed to load image at index ${index}:`, error);
+                return null; // Return null for failed loads
+            }
+        });
+
+        const loadedImages = await Promise.all(loadPromises);
+
+        // Filter out null images from failed loads
+        this.images = loadedImages.filter(img => img !== null);
+
+        if (this.images.length === 0) {
+            throw new Error('No images were successfully loaded');
+        }
+
+        console.log(`Successfully loaded ${this.images.length} out of ${imageSources.length} images`);
         return this.images;
     }
 
@@ -325,14 +347,26 @@ class ImageStitcher {
         // Sort images based on overlap relationships
         const sortedImages = this.sortImagesForHorizontalStitch();
 
-        let totalWidth = sortedImages[0].width;
-        let maxHeight = sortedImages[0].height;
+        if (!sortedImages || sortedImages.length === 0) {
+            throw new Error('No images available for stitching');
+        }
+
+        let totalWidth = sortedImages[0]?.width || 0;
+        let maxHeight = sortedImages[0]?.height || 0;
 
         // Calculate total dimensions considering actual overlaps
         for (let i = 1; i < sortedImages.length; i++) {
-            const overlap = this.findOverlapForPair(sortedImages[i-1].originalIndex, sortedImages[i].originalIndex);
-            totalWidth += sortedImages[i].width - (overlap?.overlapWidth || 0);
-            maxHeight = Math.max(maxHeight, sortedImages[i].height);
+            const currentImg = sortedImages[i];
+            const prevImg = sortedImages[i-1];
+
+            if (!currentImg || !prevImg) {
+                console.warn(`Invalid image at index ${i}, skipping`);
+                continue;
+            }
+
+            const overlap = this.findOverlapForPair(prevImg.originalIndex, currentImg.originalIndex);
+            totalWidth += (currentImg.width || 0) - (overlap?.overlapWidth || 0);
+            maxHeight = Math.max(maxHeight, currentImg.height || 0);
         }
 
         this.canvas.width = totalWidth;
@@ -343,21 +377,31 @@ class ImageStitcher {
 
         // Draw first image
         const firstImg = sortedImages[0];
-        const firstY = (maxHeight - firstImg.height) / 2;
+        if (!firstImg) {
+            throw new Error('First image is null or undefined');
+        }
+
+        const firstY = (maxHeight - (firstImg.height || 0)) / 2;
         this.ctx.drawImage(firstImg, currentX, firstY);
-        currentX += firstImg.width;
+        currentX += (firstImg.width || 0);
 
         // Draw subsequent images with blending
         for (let i = 1; i < sortedImages.length; i++) {
             const img = sortedImages[i];
             const prevImg = sortedImages[i-1];
+
+            if (!img || !prevImg) {
+                console.warn(`Invalid image at index ${i}, skipping`);
+                continue;
+            }
+
             const overlap = this.findOverlapForPair(prevImg.originalIndex, img.originalIndex);
 
             const overlapWidth = overlap?.overlapWidth || 0;
             const offsetY = overlap?.offsetY || 0;
 
             currentX -= overlapWidth;
-            const y = (maxHeight - img.height) / 2 + offsetY;
+            const y = (maxHeight - (img.height || 0)) / 2 + offsetY;
 
             if (overlapWidth > 0) {
                 this.drawImageWithBlending(img, currentX, y, overlapWidth, blendWidth);
@@ -365,7 +409,7 @@ class ImageStitcher {
                 this.ctx.drawImage(img, currentX, y);
             }
 
-            currentX += img.width;
+            currentX += (img.width || 0);
         }
 
         return this.canvas.toDataURL(format, quality);
@@ -374,13 +418,25 @@ class ImageStitcher {
     stitchVerticalOverlap(blendWidth = 50, quality = 0.9, format = 'image/jpeg') {
         const sortedImages = this.sortImagesForVerticalStitch();
 
-        let maxWidth = sortedImages[0].width;
-        let totalHeight = sortedImages[0].height;
+        if (!sortedImages || sortedImages.length === 0) {
+            throw new Error('No images available for vertical stitching');
+        }
+
+        let maxWidth = sortedImages[0]?.width || 0;
+        let totalHeight = sortedImages[0]?.height || 0;
 
         for (let i = 1; i < sortedImages.length; i++) {
-            const overlap = this.findOverlapForPair(sortedImages[i-1].originalIndex, sortedImages[i].originalIndex);
-            totalHeight += sortedImages[i].height - (overlap?.overlapHeight || 0);
-            maxWidth = Math.max(maxWidth, sortedImages[i].width);
+            const currentImg = sortedImages[i];
+            const prevImg = sortedImages[i-1];
+
+            if (!currentImg || !prevImg) {
+                console.warn(`Invalid image at index ${i}, skipping`);
+                continue;
+            }
+
+            const overlap = this.findOverlapForPair(prevImg.originalIndex, currentImg.originalIndex);
+            totalHeight += (currentImg.height || 0) - (overlap?.overlapHeight || 0);
+            maxWidth = Math.max(maxWidth, currentImg.width || 0);
         }
 
         this.canvas.width = maxWidth;
@@ -391,21 +447,31 @@ class ImageStitcher {
 
         // Draw first image
         const firstImg = sortedImages[0];
-        const firstX = (maxWidth - firstImg.width) / 2;
+        if (!firstImg) {
+            throw new Error('First image is null or undefined');
+        }
+
+        const firstX = (maxWidth - (firstImg.width || 0)) / 2;
         this.ctx.drawImage(firstImg, firstX, currentY);
-        currentY += firstImg.height;
+        currentY += (firstImg.height || 0);
 
         // Draw subsequent images with blending
         for (let i = 1; i < sortedImages.length; i++) {
             const img = sortedImages[i];
             const prevImg = sortedImages[i-1];
+
+            if (!img || !prevImg) {
+                console.warn(`Invalid image at index ${i}, skipping`);
+                continue;
+            }
+
             const overlap = this.findOverlapForPair(prevImg.originalIndex, img.originalIndex);
 
             const overlapHeight = overlap?.overlapHeight || 0;
             const offsetX = overlap?.offsetX || 0;
 
             currentY -= overlapHeight;
-            const x = (maxWidth - img.width) / 2 + offsetX;
+            const x = (maxWidth - (img.width || 0)) / 2 + offsetX;
 
             if (overlapHeight > 0) {
                 this.drawImageWithVerticalBlending(img, x, currentY, overlapHeight, blendWidth);
@@ -413,7 +479,7 @@ class ImageStitcher {
                 this.ctx.drawImage(img, x, currentY);
             }
 
-            currentY += img.height;
+            currentY += (img.height || 0);
         }
 
         return this.canvas.toDataURL(format, quality);
@@ -426,21 +492,37 @@ class ImageStitcher {
 
     stitchGrid(quality = 0.9, format = 'image/jpeg') {
         const images = this.images;
+
+        if (!images || images.length === 0) {
+            throw new Error('No images available for grid stitching');
+        }
+
         const cols = Math.ceil(Math.sqrt(images.length));
         const rows = Math.ceil(images.length / cols);
 
-        const cellWidth = Math.max(...images.map(img => img.width));
-        const cellHeight = Math.max(...images.map(img => img.height));
+        // Filter out null/undefined images and get valid dimensions
+        const validImages = images.filter(img => img && img.width && img.height);
+        if (validImages.length === 0) {
+            throw new Error('No valid images with dimensions found');
+        }
+
+        const cellWidth = Math.max(...validImages.map(img => img.width || 0));
+        const cellHeight = Math.max(...validImages.map(img => img.height || 0));
 
         this.canvas.width = cols * cellWidth;
         this.canvas.height = rows * cellHeight;
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         images.forEach((img, index) => {
+            if (!img || !img.width || !img.height) {
+                console.warn(`Invalid image at index ${index}, skipping`);
+                return;
+            }
+
             const col = index % cols;
             const row = Math.floor(index / cols);
-            const x = col * cellWidth + (cellWidth - img.width) / 2;
-            const y = row * cellHeight + (cellHeight - img.height) / 2;
+            const x = col * cellWidth + (cellWidth - (img.width || 0)) / 2;
+            const y = row * cellHeight + (cellHeight - (img.height || 0)) / 2;
 
             this.ctx.drawImage(img, x, y);
         });
@@ -449,57 +531,87 @@ class ImageStitcher {
     }
 
     drawImageWithBlending(img, x, y, overlapWidth, blendWidth) {
-        // Create temporary canvas for the image
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = img.width;
-        tempCanvas.height = img.height;
-        tempCtx.drawImage(img, 0, 0);
+        if (!img || !img.width || !img.height) {
+            console.warn('Invalid image provided for blending');
+            return;
+        }
 
-        // Create blending mask
-        const effectiveBlendWidth = Math.min(blendWidth, overlapWidth);
-        const gradient = this.ctx.createLinearGradient(
-            x, 0,
-            x + effectiveBlendWidth, 0
-        );
-        gradient.addColorStop(0, 'rgba(0,0,0,0)');
-        gradient.addColorStop(1, 'rgba(0,0,0,1)');
+        try {
+            // Create temporary canvas for the image
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = img.width || 0;
+            tempCanvas.height = img.height || 0;
+            tempCtx.drawImage(img, 0, 0);
 
-        // Draw image
-        this.ctx.drawImage(img, x, y);
+            // Create blending mask
+            const effectiveBlendWidth = Math.min(blendWidth || 50, overlapWidth || 0);
+            const gradient = this.ctx.createLinearGradient(
+                x, 0,
+                x + effectiveBlendWidth, 0
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,0)');
+            gradient.addColorStop(1, 'rgba(0,0,0,1)');
 
-        // Apply blending mask
-        this.ctx.save();
-        this.ctx.globalCompositeOperation = 'destination-in';
-        this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(x, y, effectiveBlendWidth, img.height);
-        this.ctx.restore();
+            // Draw image
+            this.ctx.drawImage(img, x, y);
+
+            // Apply blending mask
+            this.ctx.save();
+            this.ctx.globalCompositeOperation = 'destination-in';
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(x, y, effectiveBlendWidth, img.height || 0);
+            this.ctx.restore();
+        } catch (error) {
+            console.error('Error in drawImageWithBlending:', error);
+            // Fallback: just draw the image without blending
+            this.ctx.drawImage(img, x, y);
+        }
     }
 
     drawImageWithVerticalBlending(img, x, y, overlapHeight, blendWidth) {
-        const effectiveBlendWidth = Math.min(blendWidth, overlapHeight);
-        const gradient = this.ctx.createLinearGradient(
-            0, y,
-            0, y + effectiveBlendWidth
-        );
-        gradient.addColorStop(0, 'rgba(0,0,0,0)');
-        gradient.addColorStop(1, 'rgba(0,0,0,1)');
+        if (!img || !img.width || !img.height) {
+            console.warn('Invalid image provided for vertical blending');
+            return;
+        }
 
-        this.ctx.drawImage(img, x, y);
+        try {
+            const effectiveBlendWidth = Math.min(blendWidth || 50, overlapHeight || 0);
+            const gradient = this.ctx.createLinearGradient(
+                0, y,
+                0, y + effectiveBlendWidth
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,0)');
+            gradient.addColorStop(1, 'rgba(0,0,0,1)');
 
-        this.ctx.save();
-        this.ctx.globalCompositeOperation = 'destination-in';
-        this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(x, y, img.width, effectiveBlendWidth);
-        this.ctx.restore();
+            this.ctx.drawImage(img, x, y);
+
+            this.ctx.save();
+            this.ctx.globalCompositeOperation = 'destination-in';
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(x, y, img.width || 0, effectiveBlendWidth);
+            this.ctx.restore();
+        } catch (error) {
+            console.error('Error in drawImageWithVerticalBlending:', error);
+            // Fallback: just draw the image without blending
+            this.ctx.drawImage(img, x, y);
+        }
     }
 
     sortImagesForHorizontalStitch() {
         // Simple left-to-right sorting based on overlap relationships
-        const images = this.images.map((img, index) => ({
-            ...img,
-            originalIndex: index
-        }));
+        const images = this.images
+            .map((img, index) => {
+                if (!img) {
+                    console.warn(`Null image at index ${index}`);
+                    return null;
+                }
+                return {
+                    ...img,
+                    originalIndex: index
+                };
+            })
+            .filter(img => img !== null); // Remove null entries
 
         // For now, return in original order
         // In a more advanced implementation, this would analyze overlap relationships
@@ -507,18 +619,31 @@ class ImageStitcher {
     }
 
     sortImagesForVerticalStitch() {
-        const images = this.images.map((img, index) => ({
-            ...img,
-            originalIndex: index
-        }));
+        const images = this.images
+            .map((img, index) => {
+                if (!img) {
+                    console.warn(`Null image at index ${index}`);
+                    return null;
+                }
+                return {
+                    ...img,
+                    originalIndex: index
+                };
+            })
+            .filter(img => img !== null); // Remove null entries
 
         return images;
     }
 
     findOverlapForPair(index1, index2) {
+        if (index1 === null || index1 === undefined || index2 === null || index2 === undefined) {
+            return null;
+        }
+
         return this.overlaps.find(o =>
-            (o.img1Index === index1 && o.img2Index === index2) ||
-            (o.img1Index === index2 && o.img2Index === index1)
+            o &&
+            ((o.img1Index === index1 && o.img2Index === index2) ||
+            (o.img1Index === index2 && o.img2Index === index1))
         );
     }
 
