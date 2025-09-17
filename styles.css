@@ -542,20 +542,6 @@ body {
   transform: translateY(-1px);
 }
 
-.stitch-method {
-  background-color: var(--md-sys-color-surface-variant);
-  color: var(--md-sys-color-on-surface-variant);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.stitch-method:focus {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
 
 /* Photo Selection */
 .photo-selection {

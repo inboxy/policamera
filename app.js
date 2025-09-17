@@ -45,7 +45,6 @@ class PoliCameraApp {
         this.qrFab = document.getElementById('qrFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
-        this.stitchMethod = document.getElementById('stitchMethod');
 
 
         // Location elements
@@ -1149,10 +1148,9 @@ class PoliCameraApp {
 
             const photoArray = Array.from(this.selectedPhotos);
             const imageSources = photoArray.map(photo => photo.dataUrl);
-            const method = this.stitchMethod.value;
 
             const stitchedImageUrl = await this.imageStitcher.stitchImages(imageSources, {
-                method: method,
+                method: 'auto',
                 overlap: 0.1,
                 blending: true,
                 quality: 0.9,
@@ -1168,7 +1166,7 @@ class PoliCameraApp {
                 orientation: this.getCurrentOrientation(),
                 networkInfo: networkManager.getNetworkInfo(),
                 isStitched: true,
-                stitchMethod: method,
+                stitchMethod: 'auto',
                 sourcePhotos: photoArray.map(p => p.id),
                 sourcePhotoCount: photoArray.length
             };
