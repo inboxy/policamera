@@ -514,7 +514,7 @@ body {
   flex-wrap: wrap;
 }
 
-.stitch-btn {
+.stitch-btn, .pointcloud-btn {
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   border: none;
@@ -531,7 +531,12 @@ body {
   justify-content: center;
 }
 
-.stitch-btn:disabled {
+.pointcloud-btn {
+  background-color: var(--md-sys-color-secondary);
+  color: var(--md-sys-color-on-secondary);
+}
+
+.stitch-btn:disabled, .pointcloud-btn:disabled {
   background-color: var(--md-sys-color-surface-variant);
   color: var(--md-sys-color-on-surface-variant);
   cursor: not-allowed;
@@ -539,6 +544,11 @@ body {
 
 .stitch-btn:not(:disabled):hover {
   background-color: var(--md-sys-color-primary-container);
+  transform: translateY(-1px);
+}
+
+.pointcloud-btn:not(:disabled):hover {
+  background-color: var(--md-sys-color-secondary-container);
   transform: translateY(-1px);
 }
 
