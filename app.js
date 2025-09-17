@@ -1001,10 +1001,8 @@ class PoliCameraApp {
             this.isDetectionRunning = true;
             console.log('Starting real-time AI detection...');
 
-            // Run detection every 1000ms (1 second) for performance
-            this.detectionInterval = setInterval(async () => {
-                await this.runDetectionFrame();
-            }, 1000);
+            // Use requestAnimationFrame for smooth frame-by-frame detection
+            this.runDetectionLoop();
 
         } catch (error) {
             console.error('Failed to start real-time detection:', error);
@@ -1012,25 +1010,32 @@ class PoliCameraApp {
         }
     }
 
+    runDetectionLoop() {
+        if (!this.isDetectionRunning) return;
+
+        // Run detection on current frame
+        this.runDetectionFrame().finally(() => {
+            // Schedule next frame
+            if (this.isDetectionRunning) {
+                this.detectionInterval = requestAnimationFrame(() => this.runDetectionLoop());
+            }
+        });
+    }
+
     async runDetectionFrame() {
         if (!this.isDetectionRunning || !this.video || !this.detectionOverlay) return;
 
         try {
-            // Create a temporary canvas to capture video frame
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
+            // Skip if video not ready
+            if (this.video.readyState < 2) return;
 
-            tempCanvas.width = this.video.videoWidth;
-            tempCanvas.height = this.video.videoHeight;
+            // Run optimized real-time detection directly on video element
+            const detections = await aiRecognitionManager.detectObjects(this.video, true);
 
-            // Draw current video frame
-            tempCtx.drawImage(this.video, 0, 0);
-
-            // Run AI detection on the frame
-            const detections = await aiRecognitionManager.detectObjects(tempCanvas);
-
-            // Draw detection results on overlay
-            this.drawRealtimeDetections(detections);
+            // Only draw if we got results (frame wasn't skipped for performance)
+            if (detections && detections.length >= 0) {
+                this.drawRealtimeDetections(detections);
+            }
 
         } catch (error) {
             console.error('Detection frame error:', error);
@@ -1082,11 +1087,12 @@ class PoliCameraApp {
     }
 
     stopRealTimeDetection() {
+        this.isDetectionRunning = false;
+
         if (this.detectionInterval) {
-            clearInterval(this.detectionInterval);
+            cancelAnimationFrame(this.detectionInterval);
             this.detectionInterval = null;
         }
-        this.isDetectionRunning = false;
 
         // Clear overlay
         if (this.detectionOverlay) {

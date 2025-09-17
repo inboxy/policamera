@@ -10,16 +10,29 @@ class AIRecognitionManager {
         this.isLoading = false;
         this.messageId = 0;
         this.pendingMessages = new Map();
-        this.detectionThreshold = 0.5;
-        this.maxDetections = 20;
+        this.detectionThreshold = 0.4;
+        this.maxDetections = 10;
         this.workerFailureCount = 0;
         this.maxWorkerFailures = 3;
+
+        // Performance optimization settings
+        this.inputSize = 320; // Reduced from default 416 for faster processing
+        this.maxFPS = 30;
+        this.skipFrames = 2; // Process every 3rd frame
+        this.frameCounter = 0;
+        this.lastProcessTime = 0;
+        this.targetFrameTime = 1000 / this.maxFPS;
+
+        // Canvas pooling for better memory management
+        this.canvasPool = [];
+        this.maxPoolSize = 3;
 
         // Fallback properties for non-worker mode
         this.model = null;
         this.modelUrl = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2';
 
         this.initializeWorker();
+        this.adjustPerformanceSettings();
     }
 
     /**
@@ -147,11 +160,12 @@ class AIRecognitionManager {
     }
 
     /**
-     * Detect objects in an image
+     * Detect objects in an image with performance optimizations
      * @param {HTMLImageElement|HTMLCanvasElement|HTMLVideoElement} imageElement
+     * @param {boolean} isRealTime - Whether this is for real-time processing
      * @returns {Promise<Array>} Array of detection results
      */
-    async detectObjects(imageElement) {
+    async detectObjects(imageElement, isRealTime = false) {
         if (!this.isModelLoaded) {
             console.warn('AI model not loaded. Attempting to initialize...');
             const loaded = await this.initializeModel();
@@ -160,13 +174,29 @@ class AIRecognitionManager {
             }
         }
 
+        // Frame skipping for real-time performance
+        if (isRealTime) {
+            this.frameCounter++;
+            if (this.frameCounter <= this.skipFrames) {
+                return []; // Skip this frame
+            }
+            this.frameCounter = 0;
+
+            // FPS throttling
+            const currentTime = performance.now();
+            if (currentTime - this.lastProcessTime < this.targetFrameTime) {
+                return []; // Too soon, skip this frame
+            }
+            this.lastProcessTime = currentTime;
+        }
+
         try {
             if (this.worker && this.workerFailureCount < this.maxWorkerFailures) {
                 // Use worker for detection
-                return await this.detectObjectsWorker(imageElement);
+                return await this.detectObjectsWorker(imageElement, isRealTime);
             } else {
                 // Fallback to main thread
-                return await this.detectObjectsMainThread(imageElement);
+                return await this.detectObjectsMainThread(imageElement, isRealTime);
             }
         } catch (error) {
             console.error('Object detection failed:', error);
@@ -175,39 +205,73 @@ class AIRecognitionManager {
     }
 
     /**
+     * Get canvas from pool or create new one
+     */
+    getCanvas() {
+        if (this.canvasPool.length > 0) {
+            return this.canvasPool.pop();
+        }
+        return document.createElement('canvas');
+    }
+
+    /**
+     * Return canvas to pool
+     */
+    returnCanvas(canvas) {
+        if (this.canvasPool.length < this.maxPoolSize) {
+            // Clear canvas and return to pool
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            this.canvasPool.push(canvas);
+        }
+    }
+
+    /**
      * Detect objects using Web Worker
      */
-    async detectObjectsWorker(imageElement) {
+    async detectObjectsWorker(imageElement, isRealTime = false) {
+        const canvas = this.getCanvas();
+
         try {
-            // Convert image element to ImageData
-            const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            // Handle different element types
-            let width, height;
+            // Handle different element types with size optimization for real-time
+            let width, height, sourceWidth, sourceHeight;
+
             if (imageElement instanceof HTMLCanvasElement) {
-                width = imageElement.width;
-                height = imageElement.height;
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(imageElement, 0, 0);
+                sourceWidth = imageElement.width;
+                sourceHeight = imageElement.height;
             } else if (imageElement instanceof HTMLVideoElement) {
-                width = imageElement.videoWidth;
-                height = imageElement.videoHeight;
+                sourceWidth = imageElement.videoWidth;
+                sourceHeight = imageElement.videoHeight;
 
                 // Check if video dimensions are valid
-                if (width === 0 || height === 0) {
+                if (sourceWidth === 0 || sourceHeight === 0) {
                     throw new Error('Video not ready - invalid dimensions');
                 }
-
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(imageElement, 0, 0);
             } else {
-                width = imageElement.naturalWidth || imageElement.width;
-                height = imageElement.naturalHeight || imageElement.height;
-                canvas.width = width;
-                canvas.height = height;
+                sourceWidth = imageElement.naturalWidth || imageElement.width;
+                sourceHeight = imageElement.naturalHeight || imageElement.height;
+            }
+
+            // Optimize size for real-time processing
+            if (isRealTime && (sourceWidth > this.inputSize || sourceHeight > this.inputSize)) {
+                // Scale down for faster processing
+                const scale = Math.min(this.inputSize / sourceWidth, this.inputSize / sourceHeight);
+                width = Math.floor(sourceWidth * scale);
+                height = Math.floor(sourceHeight * scale);
+            } else {
+                width = sourceWidth;
+                height = sourceHeight;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+
+            // Draw image with potential scaling
+            if (width !== sourceWidth || height !== sourceHeight) {
+                ctx.drawImage(imageElement, 0, 0, width, height);
+            } else {
                 ctx.drawImage(imageElement, 0, 0);
             }
 
@@ -222,10 +286,30 @@ class AIRecognitionManager {
             });
 
             if (result.success) {
-                console.log(`Detected ${result.detections.length} objects (worker):`, result.detections);
+                // Scale bounding boxes back to original size if we downscaled
+                let detections = result.detections;
+                if (width !== sourceWidth || height !== sourceHeight) {
+                    const scaleX = sourceWidth / width;
+                    const scaleY = sourceHeight / height;
+
+                    detections = detections.map(detection => ({
+                        ...detection,
+                        bbox: {
+                            x: Math.round(detection.bbox.x * scaleX),
+                            y: Math.round(detection.bbox.y * scaleY),
+                            width: Math.round(detection.bbox.width * scaleX),
+                            height: Math.round(detection.bbox.height * scaleY)
+                        }
+                    }));
+                }
+
+                if (!isRealTime) {
+                    console.log(`Detected ${detections.length} objects (worker):`, detections);
+                }
+
                 // Reset failure count on success
                 this.workerFailureCount = 0;
-                return result.detections;
+                return detections;
             } else {
                 console.error('Worker detection failed:', result.error);
                 this.workerFailureCount++;
@@ -235,7 +319,7 @@ class AIRecognitionManager {
                 }
 
                 // Fallback to main thread
-                return await this.detectObjectsMainThread(imageElement);
+                return await this.detectObjectsMainThread(imageElement, isRealTime);
             }
 
         } catch (error) {
@@ -247,20 +331,59 @@ class AIRecognitionManager {
             }
 
             // Fallback to main thread
-            return await this.detectObjectsMainThread(imageElement);
+            return await this.detectObjectsMainThread(imageElement, isRealTime);
+        } finally {
+            // Return canvas to pool
+            this.returnCanvas(canvas);
         }
     }
 
     /**
-     * Fallback detection for main thread
+     * Fallback detection for main thread with optimizations
      */
-    async detectObjectsMainThread(imageElement) {
+    async detectObjectsMainThread(imageElement, isRealTime = false) {
+        const canvas = isRealTime ? this.getCanvas() : null;
+
         try {
-            console.log('Running object detection (main thread)...');
-            const predictions = await this.model.detect(imageElement);
+            let processElement = imageElement;
+
+            // Optimize for real-time by downscaling
+            if (isRealTime && canvas) {
+                const ctx = canvas.getContext('2d');
+
+                let sourceWidth, sourceHeight;
+                if (imageElement instanceof HTMLVideoElement) {
+                    sourceWidth = imageElement.videoWidth;
+                    sourceHeight = imageElement.videoHeight;
+                } else if (imageElement instanceof HTMLCanvasElement) {
+                    sourceWidth = imageElement.width;
+                    sourceHeight = imageElement.height;
+                } else {
+                    sourceWidth = imageElement.naturalWidth || imageElement.width;
+                    sourceHeight = imageElement.naturalHeight || imageElement.height;
+                }
+
+                // Downscale for performance
+                if (sourceWidth > this.inputSize || sourceHeight > this.inputSize) {
+                    const scale = Math.min(this.inputSize / sourceWidth, this.inputSize / sourceHeight);
+                    const width = Math.floor(sourceWidth * scale);
+                    const height = Math.floor(sourceHeight * scale);
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(imageElement, 0, 0, width, height);
+                    processElement = canvas;
+                }
+            }
+
+            if (!isRealTime) {
+                console.log('Running object detection (main thread)...');
+            }
+
+            const predictions = await this.model.detect(processElement);
 
             // Filter predictions by confidence threshold
-            const filteredPredictions = predictions
+            let filteredPredictions = predictions
                 .filter(prediction => prediction.score >= this.detectionThreshold)
                 .slice(0, this.maxDetections)
                 .map(prediction => ({
@@ -274,12 +397,47 @@ class AIRecognitionManager {
                     }
                 }));
 
-            console.log(`Detected ${filteredPredictions.length} objects (main thread):`, filteredPredictions);
+            // Scale bounding boxes back if we downscaled
+            if (isRealTime && canvas && processElement === canvas) {
+                let sourceWidth, sourceHeight;
+                if (imageElement instanceof HTMLVideoElement) {
+                    sourceWidth = imageElement.videoWidth;
+                    sourceHeight = imageElement.videoHeight;
+                } else if (imageElement instanceof HTMLCanvasElement) {
+                    sourceWidth = imageElement.width;
+                    sourceHeight = imageElement.height;
+                } else {
+                    sourceWidth = imageElement.naturalWidth || imageElement.width;
+                    sourceHeight = imageElement.naturalHeight || imageElement.height;
+                }
+
+                const scaleX = sourceWidth / canvas.width;
+                const scaleY = sourceHeight / canvas.height;
+
+                filteredPredictions = filteredPredictions.map(prediction => ({
+                    ...prediction,
+                    bbox: {
+                        x: Math.round(prediction.bbox.x * scaleX),
+                        y: Math.round(prediction.bbox.y * scaleY),
+                        width: Math.round(prediction.bbox.width * scaleX),
+                        height: Math.round(prediction.bbox.height * scaleY)
+                    }
+                }));
+            }
+
+            if (!isRealTime) {
+                console.log(`Detected ${filteredPredictions.length} objects (main thread):`, filteredPredictions);
+            }
+
             return filteredPredictions;
 
         } catch (error) {
             console.error('Main thread detection failed:', error);
             return [];
+        } finally {
+            if (canvas) {
+                this.returnCanvas(canvas);
+            }
         }
     }
 
@@ -489,6 +647,63 @@ class AIRecognitionManager {
     /**
      * Clean up resources
      */
+    /**
+     * Adjust performance settings based on device capabilities
+     */
+    adjustPerformanceSettings() {
+        // Detect device capabilities
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        const hasWebGL = !!gl;
+
+        // Estimate device performance based on hardware concurrency and WebGL support
+        const cores = navigator.hardwareConcurrency || 4;
+        const isHighPerformance = cores >= 8 && hasWebGL;
+        const isMediumPerformance = cores >= 4 && hasWebGL;
+
+        if (isHighPerformance) {
+            // High-end device: more frequent processing, higher quality
+            this.skipFrames = 1; // Process every 2nd frame
+            this.inputSize = 416; // Higher resolution
+            this.maxDetections = 15;
+            this.detectionThreshold = 0.3;
+            console.log('High performance mode enabled');
+        } else if (isMediumPerformance) {
+            // Medium device: balanced settings
+            this.skipFrames = 2; // Process every 3rd frame
+            this.inputSize = 320; // Medium resolution
+            this.maxDetections = 10;
+            this.detectionThreshold = 0.4;
+            console.log('Medium performance mode enabled');
+        } else {
+            // Low-end device: maximum optimization
+            this.skipFrames = 4; // Process every 5th frame
+            this.inputSize = 224; // Lower resolution
+            this.maxDetections = 5;
+            this.detectionThreshold = 0.5;
+            console.log('Low performance mode enabled');
+        }
+
+        // Cleanup
+        if (gl) {
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+        }
+    }
+
+    /**
+     * Get current performance statistics
+     */
+    getPerformanceStats() {
+        return {
+            inputSize: this.inputSize,
+            skipFrames: this.skipFrames,
+            maxDetections: this.maxDetections,
+            detectionThreshold: this.detectionThreshold,
+            isWorkerSupported: this.isWorkerSupported,
+            workerFailureCount: this.workerFailureCount
+        };
+    }
+
     cleanup() {
         if (this.worker) {
             this.worker.terminate();
