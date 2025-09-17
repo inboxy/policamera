@@ -490,6 +490,104 @@ body {
   line-height: 1.2;
 }
 
+/* Stitching Controls */
+.photos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.photos-header h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.stitch-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stitch-btn {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.stitch-btn:disabled {
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: not-allowed;
+}
+
+.stitch-btn:not(:disabled):hover {
+  background-color: var(--md-sys-color-primary-container);
+  transform: translateY(-1px);
+}
+
+.stitch-method {
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.stitch-method:focus {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* Photo Selection */
+.photo-selection {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+.photo-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--md-sys-color-primary);
+}
+
+.photo-item.selected {
+  ring: 3px solid var(--md-sys-color-primary);
+  transform: scale(0.95);
+}
+
+.photo-item.selected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(180, 242, 34, 0.2);
+  pointer-events: none;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .gps-overlay {

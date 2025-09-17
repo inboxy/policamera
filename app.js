@@ -11,6 +11,8 @@ class PoliCameraApp {
         this.userId = null;
         this.detectionInterval = null;
         this.isDetectionRunning = false;
+        this.imageStitcher = null;
+        this.selectedPhotos = new Set();
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -20,6 +22,7 @@ class PoliCameraApp {
         this.initializeWebVTT();
         this.initializeUserId();
         this.initializeDatabase();
+        this.initializeStitcher();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
@@ -41,6 +44,8 @@ class PoliCameraApp {
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
         this.photosOverlay = document.getElementById('photosOverlay');
+        this.stitchBtn = document.getElementById('stitchBtn');
+        this.stitchMethod = document.getElementById('stitchMethod');
 
 
         // Location elements
@@ -74,6 +79,7 @@ class PoliCameraApp {
         this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
+        this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -643,6 +649,9 @@ class PoliCameraApp {
         const photoElement = document.createElement('div');
         photoElement.className = 'photo-item';
         photoElement.innerHTML = `
+            <div class="photo-selection">
+                <input type="checkbox" class="photo-checkbox" data-photo-id="${photo.id}">
+            </div>
             <img src="${photo.dataUrl}" alt="Captured photo">
             <div class="photo-metadata">
                 <div>${new Date(photo.timestamp).toLocaleTimeString()}</div>
@@ -650,7 +659,21 @@ class PoliCameraApp {
             </div>
         `;
 
-        photoElement.addEventListener('click', () => {
+        const checkbox = photoElement.querySelector('.photo-checkbox');
+        const img = photoElement.querySelector('img');
+
+        checkbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this.selectedPhotos.add(photo);
+                photoElement.classList.add('selected');
+            } else {
+                this.selectedPhotos.delete(photo);
+                photoElement.classList.remove('selected');
+            }
+            this.updateStitchButton();
+        });
+
+        img.addEventListener('click', () => {
             this.showPhotoDetails(photo);
         });
 
@@ -1097,6 +1120,117 @@ class PoliCameraApp {
                 toast.parentNode.removeChild(toast);
             }
         }, 4000);
+    }
+
+    initializeStitcher() {
+        this.imageStitcher = new ImageStitcher();
+        this.updateStitchButton();
+    }
+
+    updateStitchButton() {
+        if (this.stitchBtn) {
+            this.stitchBtn.disabled = this.selectedPhotos.size < 2;
+            this.stitchBtn.textContent = this.selectedPhotos.size < 2
+                ? 'Select 2+ Photos'
+                : `Stitch ${this.selectedPhotos.size} Photos`;
+        }
+    }
+
+    async stitchSelectedPhotos() {
+        if (this.selectedPhotos.size < 2) {
+            this.showError('Please select at least 2 photos to stitch');
+            return;
+        }
+
+        try {
+            this.stitchBtn.disabled = true;
+            this.stitchBtn.textContent = 'Stitching...';
+
+            const photoArray = Array.from(this.selectedPhotos);
+            const imageSources = photoArray.map(photo => photo.dataUrl);
+            const method = this.stitchMethod.value;
+
+            const stitchedImageUrl = await this.imageStitcher.stitchImages(imageSources, {
+                method: method,
+                overlap: 0.1,
+                blending: true,
+                quality: 0.9,
+                format: 'image/jpeg'
+            });
+
+            const stitchedPhoto = {
+                id: Date.now(),
+                userId: this.userId,
+                dataUrl: stitchedImageUrl,
+                timestamp: new Date().toISOString(),
+                location: this.getCurrentLocation(),
+                orientation: this.getCurrentOrientation(),
+                networkInfo: networkManager.getNetworkInfo(),
+                isStitched: true,
+                stitchMethod: method,
+                sourcePhotos: photoArray.map(p => p.id),
+                sourcePhotoCount: photoArray.length
+            };
+
+            this.capturedPhotos.push(stitchedPhoto);
+            this.displayPhoto(stitchedPhoto);
+            this.savePhotoToStorage(stitchedPhoto);
+            this.savePhotoToDatabase(stitchedPhoto);
+
+            this.clearPhotoSelection();
+            this.showStitchSuccess(stitchedPhoto);
+
+        } catch (error) {
+            console.error('Stitching failed:', error);
+            this.showError('Failed to stitch photos: ' + error.message);
+        } finally {
+            this.stitchBtn.disabled = false;
+            this.updateStitchButton();
+        }
+    }
+
+    clearPhotoSelection() {
+        this.selectedPhotos.clear();
+        const checkboxes = this.photosGrid.querySelectorAll('.photo-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+            checkbox.closest('.photo-item').classList.remove('selected');
+        });
+        this.updateStitchButton();
+    }
+
+    showStitchSuccess(stitchedPhoto) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            padding: 12px 24px;
+            border-radius: 24px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: var(--md-sys-elevation-level2);
+            cursor: pointer;
+        `;
+        toast.innerHTML = `
+            <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">collections</span>
+            Photo stitching complete! Tap to view.
+        `;
+
+        toast.addEventListener('click', () => {
+            this.showPhotoDetails(stitchedPhoto);
+            document.body.removeChild(toast);
+        });
+
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 5000);
     }
 
     cleanup() {

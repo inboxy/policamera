@@ -64,6 +64,21 @@
 
             <!-- Captured photos overlay -->
             <div class="photos-overlay" id="photosOverlay" style="display: none;">
+                <div class="photos-header">
+                    <h3>Captured Photos</h3>
+                    <div class="stitch-controls">
+                        <button class="stitch-btn" id="stitchBtn" aria-label="Stitch selected photos">
+                            <span class="material-icons">collections</span>
+                            Stitch Photos
+                        </button>
+                        <select id="stitchMethod" class="stitch-method">
+                            <option value="horizontal">Horizontal</option>
+                            <option value="vertical">Vertical</option>
+                            <option value="grid">Grid</option>
+                            <option value="panoramic">Panoramic</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="photos-grid" id="photosGrid"></div>
             </div>
         </main>
@@ -95,6 +110,7 @@
     <script src="database.js"></script>
     <script src="qr.js"></script>
     <script src="network.js"></script>
+    <script src="stitch.js"></script>
     <script src="ai.js"></script>
     <script src="app.js"></script>
 </body>
