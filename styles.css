@@ -563,13 +563,44 @@ body {
   top: 8px;
   right: 8px;
   z-index: 10;
+  width: 24px;
+  height: 24px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.photo-selection:hover {
+  background-color: rgba(0, 0, 0, 0.7);
+  transform: scale(1.1);
+}
+
+.photo-tick {
+  color: var(--md-sys-color-primary);
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  transform: scale(0.8);
+}
+
+.photo-item.selected .photo-tick {
+  opacity: 1;
+}
+
+.photo-item.selected .photo-selection {
+  background-color: var(--md-sys-color-primary);
+}
+
+.photo-item.selected .photo-tick {
+  color: var(--md-sys-color-on-primary);
 }
 
 .photo-checkbox {
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-  accent-color: var(--md-sys-color-primary);
+  display: none;
 }
 
 .photo-item.selected {

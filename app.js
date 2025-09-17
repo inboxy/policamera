@@ -649,8 +649,8 @@ class PoliCameraApp {
         const photoElement = document.createElement('div');
         photoElement.className = 'photo-item';
         photoElement.innerHTML = `
-            <div class="photo-selection">
-                <input type="checkbox" class="photo-checkbox" data-photo-id="${photo.id}">
+            <div class="photo-selection" data-photo-id="${photo.id}">
+                <span class="material-icons photo-tick">check</span>
             </div>
             <img src="${photo.dataUrl}" alt="Captured photo">
             <div class="photo-metadata">
@@ -659,16 +659,17 @@ class PoliCameraApp {
             </div>
         `;
 
-        const checkbox = photoElement.querySelector('.photo-checkbox');
+        const selectionDiv = photoElement.querySelector('.photo-selection');
         const img = photoElement.querySelector('img');
 
-        checkbox.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                this.selectedPhotos.add(photo);
-                photoElement.classList.add('selected');
-            } else {
+        selectionDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.selectedPhotos.has(photo)) {
                 this.selectedPhotos.delete(photo);
                 photoElement.classList.remove('selected');
+            } else {
+                this.selectedPhotos.add(photo);
+                photoElement.classList.add('selected');
             }
             this.updateStitchButton();
         });
@@ -1191,10 +1192,9 @@ class PoliCameraApp {
 
     clearPhotoSelection() {
         this.selectedPhotos.clear();
-        const checkboxes = this.photosGrid.querySelectorAll('.photo-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = false;
-            checkbox.closest('.photo-item').classList.remove('selected');
+        const photoItems = this.photosGrid.querySelectorAll('.photo-item');
+        photoItems.forEach(photoItem => {
+            photoItem.classList.remove('selected');
         });
         this.updateStitchButton();
     }
