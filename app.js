@@ -14,6 +14,9 @@ class PoliCameraApp {
         this.imageStitcher = null;
         this.selectedPhotos = new Set();
         this.pointCloudGenerator = null;
+        this.hasLoggedFirstDetection = false;
+        this.hasLoggedDetectionError = false;
+        this.appVersion = '1.0.0'; // Default version
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -25,6 +28,8 @@ class PoliCameraApp {
         this.initializeDatabase();
         this.initializeStitcher();
         this.initializePointCloud();
+        this.initializePullToRefresh();
+        this.loadVersion();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
@@ -42,7 +47,6 @@ class PoliCameraApp {
         // FAB elements
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
-        this.photosFab = document.getElementById('photosFab');
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
         this.photosOverlay = document.getElementById('photosOverlay');
@@ -70,6 +74,7 @@ class PoliCameraApp {
         this.gpsTimeDisplayEl = document.getElementById('gpsTimeDisplay');
         this.gpsHeadingDisplayEl = document.getElementById('gpsHeadingDisplay');
         this.gpsNetworkDisplayEl = document.getElementById('gpsNetworkDisplay');
+        this.gpsVersionDisplayEl = document.getElementById('gpsVersionDisplay');
 
         // WebVTT elements
         this.positionTrack = document.getElementById('positionTrack');
@@ -78,7 +83,6 @@ class PoliCameraApp {
     initializeEventListeners() {
         this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
-        this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
@@ -92,6 +96,138 @@ class PoliCameraApp {
                 this.resumeCamera();
             }
         });
+    }
+
+    /**
+     * Initialize pull-to-refresh functionality
+     */
+    initializePullToRefresh() {
+        let touchStartY = 0;
+        let touchCurrentY = 0;
+        let isPulling = false;
+        let refreshThreshold = 80;
+
+        // Create refresh indicator element
+        const refreshIndicator = document.createElement('div');
+        refreshIndicator.id = 'pullToRefreshIndicator';
+        refreshIndicator.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            width: 60px;
+            height: 60px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+        `;
+        refreshIndicator.innerHTML = `<span class="material-icons" style="font-size: 28px;">refresh</span>`;
+        document.body.appendChild(refreshIndicator);
+
+        const main = document.querySelector('.main');
+        if (!main) return;
+
+        // Touch start
+        main.addEventListener('touchstart', (e) => {
+            // Only allow pull-to-refresh at top of page
+            if (window.scrollY === 0 && main.scrollTop === 0) {
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        // Touch move
+        main.addEventListener('touchmove', (e) => {
+            if (touchStartY === 0) return;
+
+            touchCurrentY = e.touches[0].clientY;
+            const pullDistance = touchCurrentY - touchStartY;
+
+            // Only track downward pulls from top
+            if (pullDistance > 0 && window.scrollY === 0 && main.scrollTop === 0) {
+                isPulling = true;
+
+                // Update indicator position and opacity
+                const progress = Math.min(pullDistance / refreshThreshold, 1);
+                const translateY = Math.min(pullDistance * 0.5, 100);
+
+                refreshIndicator.style.transform = `translateX(-50%) translateY(${translateY - 100}px) rotate(${progress * 360}deg)`;
+                refreshIndicator.style.opacity = progress;
+
+                // Prevent default scrolling behavior when pulling
+                if (pullDistance > 10) {
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
+
+        // Touch end
+        main.addEventListener('touchend', (e) => {
+            if (!isPulling) {
+                touchStartY = 0;
+                return;
+            }
+
+            const pullDistance = touchCurrentY - touchStartY;
+
+            // Trigger refresh if pulled far enough
+            if (pullDistance >= refreshThreshold) {
+                this.performRefresh(refreshIndicator);
+            } else {
+                // Reset indicator
+                refreshIndicator.style.transform = 'translateX(-50%) translateY(-100px)';
+                refreshIndicator.style.opacity = '0';
+            }
+
+            // Reset state
+            touchStartY = 0;
+            touchCurrentY = 0;
+            isPulling = false;
+        }, { passive: true });
+    }
+
+    /**
+     * Perform app refresh
+     */
+    performRefresh(indicator) {
+        // Animate indicator to top center
+        indicator.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+        indicator.style.transform = 'translateX(-50%) translateY(20px)';
+        indicator.style.opacity = '1';
+
+        // Add spinning animation
+        indicator.querySelector('.material-icons').style.animation = 'spin 1s linear infinite';
+
+        // Add spin keyframes if not already present
+        if (!document.querySelector('#spinKeyframes')) {
+            const style = document.createElement('style');
+            style.id = 'spinKeyframes';
+            style.textContent = `
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Show refresh message
+        console.log('🔄 Refreshing application...');
+
+        // Perform cleanup before reload
+        this.cleanup();
+
+        // Reload after animation
+        setTimeout(() => {
+            window.location.reload();
+        }, 600);
     }
 
     async initializeServiceWorker() {
@@ -401,7 +537,6 @@ class PoliCameraApp {
 
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
-                this.photosFab.style.display = 'flex';
             }
 
             // Show errors if any
@@ -840,6 +975,27 @@ class PoliCameraApp {
             (networkInfo.effectiveType ? networkInfo.effectiveType.toUpperCase() : 'ONLINE') :
             'OFFLINE';
         this.gpsNetworkDisplayEl.textContent = networkText;
+
+        // Update version
+        this.gpsVersionDisplayEl.textContent = this.appVersion;
+    }
+
+    /**
+     * Load version from manifest
+     */
+    async loadVersion() {
+        try {
+            const response = await fetch('manifest.json');
+            const manifest = await response.json();
+            if (manifest.version) {
+                this.appVersion = manifest.version;
+                this.gpsVersionDisplayEl.textContent = this.appVersion;
+                console.log('📱 PoliCamera version:', this.appVersion);
+            }
+        } catch (error) {
+            console.warn('Failed to load version from manifest:', error);
+            // Keep default version
+        }
     }
 
     startGPSDisplayUpdates() {
@@ -993,26 +1149,74 @@ class PoliCameraApp {
     }
 
     async startRealTimeDetection() {
-        if (this.isDetectionRunning || !window.aiRecognitionManager) return;
+        if (this.isDetectionRunning || !window.aiRecognitionManager) {
+            if (!window.aiRecognitionManager) {
+                console.error('AI Recognition Manager not available');
+            }
+            return;
+        }
 
         try {
+            console.log('🤖 Initializing AI model for real-time detection...');
+
             // Initialize AI model if not already loaded
             const isLoaded = await aiRecognitionManager.initializeModel();
             if (!isLoaded) {
-                console.warn('AI model failed to load, real-time detection disabled');
+                console.warn('⚠️ AI model failed to load, real-time detection disabled');
+                this.showError('AI model failed to load');
                 return;
             }
 
             this.isDetectionRunning = true;
-            console.log('Starting real-time AI detection...');
+            console.log('✅ Real-time AI detection started');
+            console.log('📊 Detection overlay size:', this.detectionOverlay.width, 'x', this.detectionOverlay.height);
+            console.log('📹 Video size:', this.video.videoWidth, 'x', this.video.videoHeight);
+
+            // Show brief notification
+            this.showDetectionStarted();
 
             // Use requestAnimationFrame for smooth frame-by-frame detection
             this.runDetectionLoop();
 
         } catch (error) {
-            console.error('Failed to start real-time detection:', error);
+            console.error('❌ Failed to start real-time detection:', error);
             this.isDetectionRunning = false;
+            this.showError('Failed to start AI detection: ' + error.message);
         }
+    }
+
+    /**
+     * Show notification that detection has started
+     */
+    showDetectionStarted() {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            padding: 12px 24px;
+            border-radius: 24px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: var(--md-sys-elevation-level2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+        toast.innerHTML = `
+            <span class="material-icons">visibility</span>
+            AI Detection Active
+        `;
+
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 2000);
     }
 
     runDetectionLoop() {
@@ -1040,10 +1244,22 @@ class PoliCameraApp {
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
+
+                // Log first detection for debugging (only once per session)
+                if (!this.hasLoggedFirstDetection && detections.length > 0) {
+                    console.log('🎯 First detection:', detections.length, 'objects detected');
+                    console.log('Sample detection:', detections[0]);
+                    this.hasLoggedFirstDetection = true;
+                }
             }
 
         } catch (error) {
-            console.error('Detection frame error:', error);
+            console.error('❌ Detection frame error:', error);
+            // Don't spam console with errors, just log once
+            if (!this.hasLoggedDetectionError) {
+                console.error('Full error details:', error);
+                this.hasLoggedDetectionError = true;
+            }
         }
     }
 
@@ -1055,7 +1271,15 @@ class PoliCameraApp {
         // Clear previous detections
         ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
 
-        if (detections.length === 0) return;
+        // Draw "AI Active" indicator in corner when no detections
+        if (detections.length === 0) {
+            this.drawAIActiveIndicator(ctx);
+            this.drawDetectionStats(ctx);
+            return;
+        }
+
+        // Validate video dimensions
+        if (!this.video.videoWidth || !this.video.videoHeight) return;
 
         // Calculate scale factors to match video display
         const videoRect = this.video.getBoundingClientRect();
@@ -1065,11 +1289,17 @@ class PoliCameraApp {
         detections.forEach(detection => {
             const { bbox, class: className, confidence, trackId } = detection;
 
+            // Validate bbox
+            if (!bbox || bbox.width <= 0 || bbox.height <= 0) return;
+
             // Scale bounding box to overlay dimensions
             const x = bbox.x * scaleX;
             const y = bbox.y * scaleY;
             const width = bbox.width * scaleX;
             const height = bbox.height * scaleY;
+
+            // Skip if scaled dimensions are too small
+            if (width < 5 || height < 5) return;
 
             // Get color for this class from AI manager
             const color = window.aiRecognitionManager ?
@@ -1082,39 +1312,34 @@ class PoliCameraApp {
             ctx.lineWidth = 3;
             ctx.strokeRect(x, y, width, height);
 
-            // Reset shadow for text
+            // Reset shadow for corners
             ctx.shadowBlur = 0;
 
-            // Draw corner accents for modern look
+            // Draw corner accents for modern look - all in one path for efficiency
             const cornerLength = Math.min(20, width / 4, height / 4);
             ctx.lineWidth = 4;
+            ctx.beginPath();
 
             // Top-left corner
-            ctx.beginPath();
             ctx.moveTo(x, y + cornerLength);
             ctx.lineTo(x, y);
             ctx.lineTo(x + cornerLength, y);
-            ctx.stroke();
 
             // Top-right corner
-            ctx.beginPath();
             ctx.moveTo(x + width - cornerLength, y);
             ctx.lineTo(x + width, y);
             ctx.lineTo(x + width, y + cornerLength);
-            ctx.stroke();
 
             // Bottom-left corner
-            ctx.beginPath();
             ctx.moveTo(x, y + height - cornerLength);
             ctx.lineTo(x, y + height);
             ctx.lineTo(x + cornerLength, y + height);
-            ctx.stroke();
 
             // Bottom-right corner
-            ctx.beginPath();
             ctx.moveTo(x + width - cornerLength, y + height);
             ctx.lineTo(x + width, y + height);
             ctx.lineTo(x + width, y + height - cornerLength);
+
             ctx.stroke();
 
             // Draw label with track ID if available
@@ -1196,7 +1421,29 @@ class PoliCameraApp {
     }
 
     /**
+     * Draw AI Active indicator when no objects detected
+     */
+    drawAIActiveIndicator(ctx) {
+        if (!this.detectionOverlay || this.detectionOverlay.width < 100) return;
+
+        const padding = 12;
+        const x = this.detectionOverlay.width - 120;
+        const y = this.detectionOverlay.height - 50;
+
+        // Background
+        ctx.fillStyle = 'rgba(180, 242, 34, 0.8)';
+        this.drawRoundedRect(ctx, x, y, 100, 30, 6);
+        ctx.fill();
+
+        // Text
+        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#000';
+        ctx.fillText('🤖 AI ACTIVE', x + 8, y + 19);
+    }
+
+    /**
      * Draw detection statistics overlay
+     * Optimized to only draw when overlay is visible and stats exist
      */
     drawDetectionStats(ctx) {
         if (!window.aiRecognitionManager) return;
@@ -1204,17 +1451,30 @@ class PoliCameraApp {
         const stats = aiRecognitionManager.getDetectionStatistics();
         if (!stats || stats.frameCount === 0) return;
 
+        // Only draw stats if we have overlay space
+        if (this.detectionOverlay.width < 250) return;
+
         // Draw stats in top-right corner
         const padding = 12;
         const lineHeight = 18;
-        const x = this.detectionOverlay.width - 200;
+        const statsWidth = 200;
+        const x = this.detectionOverlay.width - statsWidth - padding;
         let y = padding;
 
-        // Background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        const statsHeight = lineHeight * (2 + Object.keys(stats.classCounts).length);
-        this.drawRoundedRect(ctx, x - padding, y, 200, statsHeight + padding, 8);
+        // Calculate dynamic height based on class count
+        const sortedClasses = Object.entries(stats.classCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5); // Top 5 classes
+
+        const statsHeight = lineHeight * (2 + sortedClasses.length) + padding;
+
+        // Background with shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        this.drawRoundedRect(ctx, x - padding, y, statsWidth, statsHeight, 8);
         ctx.fill();
+        ctx.shadowBlur = 0;
 
         // Stats text
         ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -1227,13 +1487,10 @@ class PoliCameraApp {
         ctx.fillText(`📊 Avg: ${stats.averageDetectionsPerFrame}`, x, y);
 
         // Class breakdown
-        const sortedClasses = Object.entries(stats.classCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 5); // Top 5 classes
-
         if (sortedClasses.length > 0) {
             ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            sortedClasses.forEach(([className, count]) => {
+            for (let i = 0; i < sortedClasses.length; i++) {
+                const [className, count] = sortedClasses[i];
                 y += lineHeight;
                 const color = aiRecognitionManager.getClassColor(className);
 
@@ -1241,10 +1498,11 @@ class PoliCameraApp {
                 ctx.fillStyle = color;
                 ctx.fillRect(x, y - 8, 10, 10);
 
-                // Draw class name and count
+                // Draw class name and count (truncate long names)
                 ctx.fillStyle = '#FFFFFF';
-                ctx.fillText(`${className}: ${count}`, x + 15, y);
-            });
+                const displayName = className.length > 12 ? className.substring(0, 12) + '...' : className;
+                ctx.fillText(`${displayName}: ${count}`, x + 15, y);
+            }
         }
     }
 

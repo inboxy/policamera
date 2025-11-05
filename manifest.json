@@ -1,6 +1,7 @@
 {
   "name": "PoliCamera - Professional Camera App",
   "short_name": "PoliCamera",
+  "version": "1.0.0",
   "description": "Professional camera app with GPS tracking, network monitoring, and device orientation for documentation and evidence capture",
   "id": "/",
   "start_url": "./",

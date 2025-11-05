@@ -18,7 +18,7 @@ class AIRecognitionManager {
         // Performance optimization settings
         this.inputSize = 320; // Reduced from default 416 for faster processing
         this.maxFPS = 30;
-        this.skipFrames = 2; // Process every 3rd frame
+        this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
         this.targetFrameTime = 1000 / this.maxFPS;
@@ -35,8 +35,8 @@ class AIRecognitionManager {
         this.trackedObjects = [];
         this.objectIdCounter = 0;
         this.trackingIoUThreshold = 0.3;
-        this.minDetectionFrames = 2; // Require object to appear in N frames before displaying
-        this.maxMissingFrames = 5; // Remove object if not detected for N frames
+        this.minDetectionFrames = 1; // Show objects immediately for continuous display
+        this.maxMissingFrames = 3; // Shorter persistence to reduce false tracking
 
         // NMS settings
         this.nmsIoUThreshold = 0.5;
@@ -54,7 +54,10 @@ class AIRecognitionManager {
         };
 
         // Class colors for visualization (Material Design inspired)
-        this.classColors = this.initializeClassColors();
+        // Use static class colors to avoid recreating on each instance
+        if (!AIRecognitionManager.CLASS_COLORS) {
+            AIRecognitionManager.CLASS_COLORS = this.initializeClassColors();
+        }
 
         this.initializeWorker();
         this.adjustPerformanceSettings();
@@ -132,24 +135,34 @@ class AIRecognitionManager {
      */
     async initializeModel() {
         if (this.isModelLoaded || this.isLoading) {
+            console.log('AI model already', this.isModelLoaded ? 'loaded' : 'loading');
             return this.isModelLoaded;
         }
 
         this.isLoading = true;
-        console.log('Loading AI model...');
+        console.log('🔄 Loading AI model...');
 
         try {
             if (this.worker) {
                 // Use worker
+                console.log('📦 Using Web Worker for AI processing');
                 const result = await this.sendWorkerMessage('INIT_MODEL');
                 this.isModelLoaded = result.success;
+                if (result.success) {
+                    console.log('✅ AI model loaded successfully (worker)');
+                }
                 return result.success;
             } else {
                 // Fallback to main thread
-                return await this.initializeModelMainThread();
+                console.log('⚠️ Web Worker not available, using main thread');
+                const success = await this.initializeModelMainThread();
+                if (success) {
+                    console.log('✅ AI model loaded successfully (main thread)');
+                }
+                return success;
             }
         } catch (error) {
-            console.error('Failed to load AI model:', error);
+            console.error('❌ Failed to load AI model:', error);
             this.isModelLoaded = false;
             return false;
         } finally {
@@ -199,15 +212,17 @@ class AIRecognitionManager {
             }
         }
 
-        // Frame skipping for real-time performance
-        if (isRealTime) {
+        // Frame skipping for real-time performance (if configured)
+        if (isRealTime && this.skipFrames > 0) {
             this.frameCounter++;
             if (this.frameCounter <= this.skipFrames) {
                 return []; // Skip this frame
             }
             this.frameCounter = 0;
+        }
 
-            // FPS throttling
+        // FPS throttling - always check to prevent overload
+        if (isRealTime) {
             const currentTime = performance.now();
             if (currentTime - this.lastProcessTime < this.targetFrameTime) {
                 return []; // Too soon, skip this frame
@@ -581,6 +596,9 @@ class AIRecognitionManager {
             // Get color for this class
             const color = this.getClassColor(className);
 
+            // Validate bbox before drawing
+            if (!bbox || bbox.width <= 0 || bbox.height <= 0) return;
+
             // Draw bounding box with shadow for better visibility
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
@@ -591,36 +609,31 @@ class AIRecognitionManager {
             // Reset shadow
             ctx.shadowBlur = 0;
 
-            // Draw corner accents for modern look
+            // Draw corner accents for modern look - all in one path for efficiency
             const cornerLength = Math.min(20, bbox.width / 4, bbox.height / 4);
             ctx.lineWidth = 4;
+            ctx.beginPath();
 
             // Top-left corner
-            ctx.beginPath();
             ctx.moveTo(bbox.x, bbox.y + cornerLength);
             ctx.lineTo(bbox.x, bbox.y);
             ctx.lineTo(bbox.x + cornerLength, bbox.y);
-            ctx.stroke();
 
             // Top-right corner
-            ctx.beginPath();
             ctx.moveTo(bbox.x + bbox.width - cornerLength, bbox.y);
             ctx.lineTo(bbox.x + bbox.width, bbox.y);
             ctx.lineTo(bbox.x + bbox.width, bbox.y + cornerLength);
-            ctx.stroke();
 
             // Bottom-left corner
-            ctx.beginPath();
             ctx.moveTo(bbox.x, bbox.y + bbox.height - cornerLength);
             ctx.lineTo(bbox.x, bbox.y + bbox.height);
             ctx.lineTo(bbox.x + cornerLength, bbox.y + bbox.height);
-            ctx.stroke();
 
             // Bottom-right corner
-            ctx.beginPath();
             ctx.moveTo(bbox.x + bbox.width - cornerLength, bbox.y + bbox.height);
             ctx.lineTo(bbox.x + bbox.width, bbox.y + bbox.height);
             ctx.lineTo(bbox.x + bbox.width, bbox.y + bbox.height - cornerLength);
+
             ctx.stroke();
 
             // Draw label with track ID if available
@@ -863,22 +876,29 @@ class AIRecognitionManager {
      * Get color for object class
      */
     getClassColor(className) {
-        return this.classColors[className] || '#B4F222'; // Default green
+        return AIRecognitionManager.CLASS_COLORS[className] || '#B4F222'; // Default green
     }
 
     /**
      * Calculate Intersection over Union (IoU) between two bounding boxes
      */
     calculateIoU(box1, box2) {
+        // Validate inputs
+        if (!box1 || !box2 || box1.width <= 0 || box1.height <= 0 || box2.width <= 0 || box2.height <= 0) {
+            return 0;
+        }
+
         const x1 = Math.max(box1.x, box2.x);
         const y1 = Math.max(box1.y, box2.y);
         const x2 = Math.min(box1.x + box1.width, box2.x + box2.width);
         const y2 = Math.min(box1.y + box1.height, box2.y + box2.height);
 
-        const intersectionWidth = Math.max(0, x2 - x1);
-        const intersectionHeight = Math.max(0, y2 - y1);
-        const intersectionArea = intersectionWidth * intersectionHeight;
+        // Early exit if no intersection
+        if (x2 <= x1 || y2 <= y1) {
+            return 0;
+        }
 
+        const intersectionArea = (x2 - x1) * (y2 - y1);
         const box1Area = box1.width * box1.height;
         const box2Area = box2.width * box2.height;
         const unionArea = box1Area + box2Area - intersectionArea;
@@ -888,6 +908,7 @@ class AIRecognitionManager {
 
     /**
      * Apply Non-Maximum Suppression to filter overlapping detections
+     * Optimized to avoid splice in loop
      */
     applyNMS(detections) {
         if (!this.enableNMS || detections.length === 0) {
@@ -897,17 +918,23 @@ class AIRecognitionManager {
         // Sort detections by confidence (descending)
         const sorted = [...detections].sort((a, b) => b.confidence - a.confidence);
         const keep = [];
+        const suppressed = new Set();
 
-        while (sorted.length > 0) {
-            const current = sorted.shift();
+        for (let i = 0; i < sorted.length; i++) {
+            if (suppressed.has(i)) continue;
+
+            const current = sorted[i];
             keep.push(current);
 
-            // Remove detections that overlap significantly with current
-            for (let i = sorted.length - 1; i >= 0; i--) {
-                if (sorted[i].class === current.class) {
-                    const iou = this.calculateIoU(current.bbox, sorted[i].bbox);
+            // Mark overlapping detections for suppression
+            for (let j = i + 1; j < sorted.length; j++) {
+                if (suppressed.has(j)) continue;
+
+                // Only suppress same class detections
+                if (sorted[j].class === current.class) {
+                    const iou = this.calculateIoU(current.bbox, sorted[j].bbox);
                     if (iou > this.nmsIoUThreshold) {
-                        sorted.splice(i, 1);
+                        suppressed.add(j);
                     }
                 }
             }
@@ -920,26 +947,40 @@ class AIRecognitionManager {
      * Smooth bounding box using exponential moving average
      */
     smoothBoundingBox(newBox, oldBox) {
-        if (!this.enableSmoothing || !oldBox) {
+        if (!this.enableSmoothing || !oldBox || !newBox) {
+            return newBox;
+        }
+
+        // Validate inputs
+        if (newBox.width <= 0 || newBox.height <= 0) {
             return newBox;
         }
 
         const alpha = this.smoothingAlpha;
-        return {
+        const smoothed = {
             x: Math.round(alpha * newBox.x + (1 - alpha) * oldBox.x),
             y: Math.round(alpha * newBox.y + (1 - alpha) * oldBox.y),
             width: Math.round(alpha * newBox.width + (1 - alpha) * oldBox.width),
             height: Math.round(alpha * newBox.height + (1 - alpha) * oldBox.height)
         };
+
+        // Ensure non-negative dimensions
+        smoothed.width = Math.max(1, smoothed.width);
+        smoothed.height = Math.max(1, smoothed.height);
+
+        return smoothed;
     }
 
     /**
      * Track objects across frames using IoU matching
+     * Optimized to avoid splice and reduce object creation
      */
     trackObjects(detections) {
         if (detections.length === 0) {
             // Increment missing frame count for all tracked objects
-            this.trackedObjects.forEach(obj => obj.missingFrames++);
+            for (let i = 0; i < this.trackedObjects.length; i++) {
+                this.trackedObjects[i].missingFrames++;
+            }
 
             // Remove objects that have been missing too long
             this.trackedObjects = this.trackedObjects.filter(
@@ -951,24 +992,29 @@ class AIRecognitionManager {
 
         // Match detections to existing tracked objects
         const matchedDetections = [];
-        const unmatchedDetections = [...detections];
+        const matched = new Set(); // Track which detections have been matched
 
         // Try to match each tracked object with a detection
-        this.trackedObjects.forEach(tracked => {
+        for (let t = 0; t < this.trackedObjects.length; t++) {
+            const tracked = this.trackedObjects[t];
             let bestMatch = null;
             let bestIoU = 0;
             let bestIndex = -1;
 
-            unmatchedDetections.forEach((detection, index) => {
+            // Find best matching detection
+            for (let d = 0; d < detections.length; d++) {
+                if (matched.has(d)) continue; // Skip already matched
+
+                const detection = detections[d];
                 if (detection.class === tracked.class) {
                     const iou = this.calculateIoU(tracked.bbox, detection.bbox);
                     if (iou > bestIoU && iou > this.trackingIoUThreshold) {
                         bestMatch = detection;
                         bestIoU = iou;
-                        bestIndex = index;
+                        bestIndex = d;
                     }
                 }
-            });
+            }
 
             if (bestMatch) {
                 // Update tracked object with smoothed bounding box
@@ -978,36 +1024,44 @@ class AIRecognitionManager {
                 tracked.missingFrames = 0;
 
                 matchedDetections.push({
-                    ...bestMatch,
+                    class: bestMatch.class,
+                    confidence: bestMatch.confidence,
                     bbox: tracked.bbox,
                     trackId: tracked.id,
                     framesSeen: tracked.framesSeen
                 });
 
-                // Remove matched detection
-                unmatchedDetections.splice(bestIndex, 1);
+                // Mark detection as matched
+                matched.add(bestIndex);
             } else {
                 tracked.missingFrames++;
             }
-        });
+        }
 
         // Add unmatched detections as new tracked objects
-        unmatchedDetections.forEach(detection => {
+        for (let d = 0; d < detections.length; d++) {
+            if (matched.has(d)) continue;
+
+            const detection = detections[d];
+            const newId = ++this.objectIdCounter;
+
             this.trackedObjects.push({
-                id: ++this.objectIdCounter,
+                id: newId,
                 class: detection.class,
-                bbox: detection.bbox,
+                bbox: { ...detection.bbox }, // Clone bbox
                 confidence: detection.confidence,
                 framesSeen: 1,
                 missingFrames: 0
             });
 
             matchedDetections.push({
-                ...detection,
-                trackId: this.objectIdCounter,
+                class: detection.class,
+                confidence: detection.confidence,
+                bbox: detection.bbox,
+                trackId: newId,
                 framesSeen: 1
             });
-        });
+        }
 
         // Remove objects that have been missing too long
         this.trackedObjects = this.trackedObjects.filter(
@@ -1027,29 +1081,52 @@ class AIRecognitionManager {
 
     /**
      * Update detection statistics
+     * Optimized to prevent unbounded growth
      */
     updateDetectionStats(detections) {
         this.detectionStats.frameCount++;
         this.detectionStats.totalDetections += detections.length;
 
-        detections.forEach(detection => {
-            const className = detection.class;
+        // Update class counts
+        for (let i = 0; i < detections.length; i++) {
+            const className = detections[i].class;
             if (!this.detectionStats.classCounts[className]) {
                 this.detectionStats.classCounts[className] = 0;
             }
             this.detectionStats.classCounts[className]++;
-        });
+        }
+
+        // Reset stats periodically to prevent unbounded growth (every 1000 frames)
+        if (this.detectionStats.frameCount > 1000) {
+            const avgDetections = this.detectionStats.totalDetections / this.detectionStats.frameCount;
+            this.detectionStats.frameCount = 100;
+            this.detectionStats.totalDetections = Math.round(avgDetections * 100);
+
+            // Scale down class counts proportionally
+            const scaleFactor = 0.1; // Keep 10% of counts
+            for (const className in this.detectionStats.classCounts) {
+                this.detectionStats.classCounts[className] = Math.max(
+                    1,
+                    Math.round(this.detectionStats.classCounts[className] * scaleFactor)
+                );
+            }
+        }
     }
 
     /**
      * Get detection statistics
+     * Returns cached stats to avoid recalculation
      */
     getDetectionStatistics() {
+        const avgDetections = this.detectionStats.frameCount > 0
+            ? (this.detectionStats.totalDetections / this.detectionStats.frameCount).toFixed(2)
+            : '0.00';
+
         return {
-            ...this.detectionStats,
-            averageDetectionsPerFrame: this.detectionStats.frameCount > 0
-                ? (this.detectionStats.totalDetections / this.detectionStats.frameCount).toFixed(2)
-                : 0,
+            frameCount: this.detectionStats.frameCount,
+            totalDetections: this.detectionStats.totalDetections,
+            classCounts: this.detectionStats.classCounts,
+            averageDetectionsPerFrame: avgDetections,
             trackedObjectsCount: this.trackedObjects.length
         };
     }
@@ -1083,25 +1160,25 @@ class AIRecognitionManager {
 
         if (isHighPerformance) {
             // High-end device: more frequent processing, higher quality
-            this.skipFrames = 1; // Process every 2nd frame
+            this.skipFrames = 0; // Process every frame
             this.inputSize = 416; // Higher resolution
-            this.maxDetections = 15;
-            this.detectionThreshold = 0.3;
-            console.log('High performance mode enabled');
+            this.maxDetections = 20;
+            this.detectionThreshold = 0.25; // Lower threshold for more detections
+            console.log('High performance mode enabled - continuous detection');
         } else if (isMediumPerformance) {
             // Medium device: balanced settings
-            this.skipFrames = 2; // Process every 3rd frame
+            this.skipFrames = 0; // Process every frame
             this.inputSize = 320; // Medium resolution
-            this.maxDetections = 10;
-            this.detectionThreshold = 0.4;
-            console.log('Medium performance mode enabled');
+            this.maxDetections = 15;
+            this.detectionThreshold = 0.35; // Lower threshold for more detections
+            console.log('Medium performance mode enabled - continuous detection');
         } else {
-            // Low-end device: maximum optimization
-            this.skipFrames = 4; // Process every 5th frame
+            // Low-end device: still continuous but optimized
+            this.skipFrames = 1; // Process every 2nd frame minimum
             this.inputSize = 224; // Lower resolution
-            this.maxDetections = 5;
-            this.detectionThreshold = 0.5;
-            console.log('Low performance mode enabled');
+            this.maxDetections = 10;
+            this.detectionThreshold = 0.45; // Lower threshold for more detections
+            console.log('Low performance mode enabled - continuous detection');
         }
 
         // Cleanup
