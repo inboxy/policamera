@@ -27,6 +27,7 @@ class PoliCameraApp {
         this.initializeDatabase();
         this.initializeStitcher();
         this.initializePointCloud();
+        this.initializePullToRefresh();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
@@ -44,7 +45,6 @@ class PoliCameraApp {
         // FAB elements
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
-        this.photosFab = document.getElementById('photosFab');
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
         this.photosOverlay = document.getElementById('photosOverlay');
@@ -80,7 +80,6 @@ class PoliCameraApp {
     initializeEventListeners() {
         this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
-        this.photosFab.addEventListener('click', () => this.togglePhotosOverlay());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
@@ -94,6 +93,138 @@ class PoliCameraApp {
                 this.resumeCamera();
             }
         });
+    }
+
+    /**
+     * Initialize pull-to-refresh functionality
+     */
+    initializePullToRefresh() {
+        let touchStartY = 0;
+        let touchCurrentY = 0;
+        let isPulling = false;
+        let refreshThreshold = 80;
+
+        // Create refresh indicator element
+        const refreshIndicator = document.createElement('div');
+        refreshIndicator.id = 'pullToRefreshIndicator';
+        refreshIndicator.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            width: 60px;
+            height: 60px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+        `;
+        refreshIndicator.innerHTML = `<span class="material-icons" style="font-size: 28px;">refresh</span>`;
+        document.body.appendChild(refreshIndicator);
+
+        const main = document.querySelector('.main');
+        if (!main) return;
+
+        // Touch start
+        main.addEventListener('touchstart', (e) => {
+            // Only allow pull-to-refresh at top of page
+            if (window.scrollY === 0 && main.scrollTop === 0) {
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        // Touch move
+        main.addEventListener('touchmove', (e) => {
+            if (touchStartY === 0) return;
+
+            touchCurrentY = e.touches[0].clientY;
+            const pullDistance = touchCurrentY - touchStartY;
+
+            // Only track downward pulls from top
+            if (pullDistance > 0 && window.scrollY === 0 && main.scrollTop === 0) {
+                isPulling = true;
+
+                // Update indicator position and opacity
+                const progress = Math.min(pullDistance / refreshThreshold, 1);
+                const translateY = Math.min(pullDistance * 0.5, 100);
+
+                refreshIndicator.style.transform = `translateX(-50%) translateY(${translateY - 100}px) rotate(${progress * 360}deg)`;
+                refreshIndicator.style.opacity = progress;
+
+                // Prevent default scrolling behavior when pulling
+                if (pullDistance > 10) {
+                    e.preventDefault();
+                }
+            }
+        }, { passive: false });
+
+        // Touch end
+        main.addEventListener('touchend', (e) => {
+            if (!isPulling) {
+                touchStartY = 0;
+                return;
+            }
+
+            const pullDistance = touchCurrentY - touchStartY;
+
+            // Trigger refresh if pulled far enough
+            if (pullDistance >= refreshThreshold) {
+                this.performRefresh(refreshIndicator);
+            } else {
+                // Reset indicator
+                refreshIndicator.style.transform = 'translateX(-50%) translateY(-100px)';
+                refreshIndicator.style.opacity = '0';
+            }
+
+            // Reset state
+            touchStartY = 0;
+            touchCurrentY = 0;
+            isPulling = false;
+        }, { passive: true });
+    }
+
+    /**
+     * Perform app refresh
+     */
+    performRefresh(indicator) {
+        // Animate indicator to top center
+        indicator.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+        indicator.style.transform = 'translateX(-50%) translateY(20px)';
+        indicator.style.opacity = '1';
+
+        // Add spinning animation
+        indicator.querySelector('.material-icons').style.animation = 'spin 1s linear infinite';
+
+        // Add spin keyframes if not already present
+        if (!document.querySelector('#spinKeyframes')) {
+            const style = document.createElement('style');
+            style.id = 'spinKeyframes';
+            style.textContent = `
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Show refresh message
+        console.log('🔄 Refreshing application...');
+
+        // Perform cleanup before reload
+        this.cleanup();
+
+        // Reload after animation
+        setTimeout(() => {
+            window.location.reload();
+        }, 600);
     }
 
     async initializeServiceWorker() {
@@ -403,7 +534,6 @@ class PoliCameraApp {
 
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
-                this.photosFab.style.display = 'flex';
             }
 
             // Show errors if any
