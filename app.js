@@ -1063,7 +1063,7 @@ class PoliCameraApp {
         const scaleY = videoRect.height / this.video.videoHeight;
 
         detections.forEach(detection => {
-            const { bbox, class: className, confidence } = detection;
+            const { bbox, class: className, confidence, trackId } = detection;
 
             // Scale bounding box to overlay dimensions
             const x = bbox.x * scaleX;
@@ -1071,24 +1071,181 @@ class PoliCameraApp {
             const width = bbox.width * scaleX;
             const height = bbox.height * scaleY;
 
-            // Draw bounding box
-            ctx.strokeStyle = '#B4F222';
-            ctx.lineWidth = 2;
+            // Get color for this class from AI manager
+            const color = window.aiRecognitionManager ?
+                aiRecognitionManager.getClassColor(className) : '#B4F222';
+
+            // Draw bounding box with thicker line and shadow for better visibility
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
             ctx.strokeRect(x, y, width, height);
 
-            // Draw label background
-            const label = `${className} ${confidence}%`;
-            ctx.font = 'bold 14px Arial';
+            // Reset shadow for text
+            ctx.shadowBlur = 0;
+
+            // Draw corner accents for modern look
+            const cornerLength = Math.min(20, width / 4, height / 4);
+            ctx.lineWidth = 4;
+
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(x, y + cornerLength);
+            ctx.lineTo(x, y);
+            ctx.lineTo(x + cornerLength, y);
+            ctx.stroke();
+
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(x + width - cornerLength, y);
+            ctx.lineTo(x + width, y);
+            ctx.lineTo(x + width, y + cornerLength);
+            ctx.stroke();
+
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(x, y + height - cornerLength);
+            ctx.lineTo(x, y + height);
+            ctx.lineTo(x + cornerLength, y + height);
+            ctx.stroke();
+
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(x + width - cornerLength, y + height);
+            ctx.lineTo(x + width, y + height);
+            ctx.lineTo(x + width, y + height - cornerLength);
+            ctx.stroke();
+
+            // Draw label with track ID if available
+            const label = trackId ? `${className} #${trackId} ${confidence}%` : `${className} ${confidence}%`;
+            ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
             const textMetrics = ctx.measureText(label);
             const textWidth = textMetrics.width;
+            const textHeight = 18;
 
-            ctx.fillStyle = 'rgba(180, 242, 34, 0.9)';
-            ctx.fillRect(x, y - 25, textWidth + 10, 20);
+            // Draw label background with same color but semi-transparent
+            ctx.fillStyle = this.hexToRGBA(color, 0.9);
+            const labelX = x;
+            const labelY = y - textHeight - 6;
+            const padding = 8;
 
-            // Draw label text
-            ctx.fillStyle = '#000';
-            ctx.fillText(label, x + 5, y - 10);
+            // Draw rounded rectangle for label
+            this.drawRoundedRect(ctx, labelX, labelY, textWidth + padding * 2, textHeight + 4, 4);
+            ctx.fill();
+
+            // Draw label text with contrasting color
+            ctx.fillStyle = this.getContrastColor(color);
+            ctx.fillText(label, labelX + padding, labelY + textHeight - 3);
+
+            // Draw confidence bar
+            const barWidth = width;
+            const barHeight = 3;
+            const barX = x;
+            const barY = y + height + 4;
+
+            // Background bar
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+
+            // Confidence bar
+            ctx.fillStyle = color;
+            ctx.fillRect(barX, barY, barWidth * (confidence / 100), barHeight);
         });
+
+        // Draw detection statistics overlay
+        this.drawDetectionStats(ctx);
+    }
+
+    /**
+     * Helper function to draw rounded rectangle
+     */
+    drawRoundedRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
+
+    /**
+     * Convert hex color to RGBA
+     */
+    hexToRGBA(hex, alpha) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    /**
+     * Get contrasting color (black or white) for text
+     */
+    getContrastColor(hexColor) {
+        const r = parseInt(hexColor.slice(1, 3), 16);
+        const g = parseInt(hexColor.slice(3, 5), 16);
+        const b = parseInt(hexColor.slice(5, 7), 16);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.5 ? '#000000' : '#FFFFFF';
+    }
+
+    /**
+     * Draw detection statistics overlay
+     */
+    drawDetectionStats(ctx) {
+        if (!window.aiRecognitionManager) return;
+
+        const stats = aiRecognitionManager.getDetectionStatistics();
+        if (!stats || stats.frameCount === 0) return;
+
+        // Draw stats in top-right corner
+        const padding = 12;
+        const lineHeight = 18;
+        const x = this.detectionOverlay.width - 200;
+        let y = padding;
+
+        // Background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        const statsHeight = lineHeight * (2 + Object.keys(stats.classCounts).length);
+        this.drawRoundedRect(ctx, x - padding, y, 200, statsHeight + padding, 8);
+        ctx.fill();
+
+        // Stats text
+        ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+
+        y += lineHeight;
+        ctx.fillText(`🎯 Objects: ${stats.trackedObjectsCount}`, x, y);
+
+        y += lineHeight;
+        ctx.fillText(`📊 Avg: ${stats.averageDetectionsPerFrame}`, x, y);
+
+        // Class breakdown
+        const sortedClasses = Object.entries(stats.classCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5); // Top 5 classes
+
+        if (sortedClasses.length > 0) {
+            ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            sortedClasses.forEach(([className, count]) => {
+                y += lineHeight;
+                const color = aiRecognitionManager.getClassColor(className);
+
+                // Draw color indicator
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y - 8, 10, 10);
+
+                // Draw class name and count
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(`${className}: ${count}`, x + 15, y);
+            });
+        }
     }
 
     stopRealTimeDetection() {
