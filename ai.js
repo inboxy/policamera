@@ -135,24 +135,34 @@ class AIRecognitionManager {
      */
     async initializeModel() {
         if (this.isModelLoaded || this.isLoading) {
+            console.log('AI model already', this.isModelLoaded ? 'loaded' : 'loading');
             return this.isModelLoaded;
         }
 
         this.isLoading = true;
-        console.log('Loading AI model...');
+        console.log('🔄 Loading AI model...');
 
         try {
             if (this.worker) {
                 // Use worker
+                console.log('📦 Using Web Worker for AI processing');
                 const result = await this.sendWorkerMessage('INIT_MODEL');
                 this.isModelLoaded = result.success;
+                if (result.success) {
+                    console.log('✅ AI model loaded successfully (worker)');
+                }
                 return result.success;
             } else {
                 // Fallback to main thread
-                return await this.initializeModelMainThread();
+                console.log('⚠️ Web Worker not available, using main thread');
+                const success = await this.initializeModelMainThread();
+                if (success) {
+                    console.log('✅ AI model loaded successfully (main thread)');
+                }
+                return success;
             }
         } catch (error) {
-            console.error('Failed to load AI model:', error);
+            console.error('❌ Failed to load AI model:', error);
             this.isModelLoaded = false;
             return false;
         } finally {

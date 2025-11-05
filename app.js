@@ -14,6 +14,8 @@ class PoliCameraApp {
         this.imageStitcher = null;
         this.selectedPhotos = new Set();
         this.pointCloudGenerator = null;
+        this.hasLoggedFirstDetection = false;
+        this.hasLoggedDetectionError = false;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -993,26 +995,74 @@ class PoliCameraApp {
     }
 
     async startRealTimeDetection() {
-        if (this.isDetectionRunning || !window.aiRecognitionManager) return;
+        if (this.isDetectionRunning || !window.aiRecognitionManager) {
+            if (!window.aiRecognitionManager) {
+                console.error('AI Recognition Manager not available');
+            }
+            return;
+        }
 
         try {
+            console.log('🤖 Initializing AI model for real-time detection...');
+
             // Initialize AI model if not already loaded
             const isLoaded = await aiRecognitionManager.initializeModel();
             if (!isLoaded) {
-                console.warn('AI model failed to load, real-time detection disabled');
+                console.warn('⚠️ AI model failed to load, real-time detection disabled');
+                this.showError('AI model failed to load');
                 return;
             }
 
             this.isDetectionRunning = true;
-            console.log('Starting real-time AI detection...');
+            console.log('✅ Real-time AI detection started');
+            console.log('📊 Detection overlay size:', this.detectionOverlay.width, 'x', this.detectionOverlay.height);
+            console.log('📹 Video size:', this.video.videoWidth, 'x', this.video.videoHeight);
+
+            // Show brief notification
+            this.showDetectionStarted();
 
             // Use requestAnimationFrame for smooth frame-by-frame detection
             this.runDetectionLoop();
 
         } catch (error) {
-            console.error('Failed to start real-time detection:', error);
+            console.error('❌ Failed to start real-time detection:', error);
             this.isDetectionRunning = false;
+            this.showError('Failed to start AI detection: ' + error.message);
         }
+    }
+
+    /**
+     * Show notification that detection has started
+     */
+    showDetectionStarted() {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            padding: 12px 24px;
+            border-radius: 24px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: var(--md-sys-elevation-level2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+        toast.innerHTML = `
+            <span class="material-icons">visibility</span>
+            AI Detection Active
+        `;
+
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 2000);
     }
 
     runDetectionLoop() {
@@ -1040,10 +1090,22 @@ class PoliCameraApp {
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
+
+                // Log first detection for debugging (only once per session)
+                if (!this.hasLoggedFirstDetection && detections.length > 0) {
+                    console.log('🎯 First detection:', detections.length, 'objects detected');
+                    console.log('Sample detection:', detections[0]);
+                    this.hasLoggedFirstDetection = true;
+                }
             }
 
         } catch (error) {
-            console.error('Detection frame error:', error);
+            console.error('❌ Detection frame error:', error);
+            // Don't spam console with errors, just log once
+            if (!this.hasLoggedDetectionError) {
+                console.error('Full error details:', error);
+                this.hasLoggedDetectionError = true;
+            }
         }
     }
 
@@ -1055,7 +1117,12 @@ class PoliCameraApp {
         // Clear previous detections
         ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
 
-        if (detections.length === 0) return;
+        // Draw "AI Active" indicator in corner when no detections
+        if (detections.length === 0) {
+            this.drawAIActiveIndicator(ctx);
+            this.drawDetectionStats(ctx);
+            return;
+        }
 
         // Validate video dimensions
         if (!this.video.videoWidth || !this.video.videoHeight) return;
@@ -1197,6 +1264,27 @@ class PoliCameraApp {
         const b = parseInt(hexColor.slice(5, 7), 16);
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         return luminance > 0.5 ? '#000000' : '#FFFFFF';
+    }
+
+    /**
+     * Draw AI Active indicator when no objects detected
+     */
+    drawAIActiveIndicator(ctx) {
+        if (!this.detectionOverlay || this.detectionOverlay.width < 100) return;
+
+        const padding = 12;
+        const x = this.detectionOverlay.width - 120;
+        const y = this.detectionOverlay.height - 50;
+
+        // Background
+        ctx.fillStyle = 'rgba(180, 242, 34, 0.8)';
+        this.drawRoundedRect(ctx, x, y, 100, 30, 6);
+        ctx.fill();
+
+        // Text
+        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#000';
+        ctx.fillText('🤖 AI ACTIVE', x + 8, y + 19);
     }
 
     /**
