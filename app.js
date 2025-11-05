@@ -1057,6 +1057,9 @@ class PoliCameraApp {
 
         if (detections.length === 0) return;
 
+        // Validate video dimensions
+        if (!this.video.videoWidth || !this.video.videoHeight) return;
+
         // Calculate scale factors to match video display
         const videoRect = this.video.getBoundingClientRect();
         const scaleX = videoRect.width / this.video.videoWidth;
@@ -1065,11 +1068,17 @@ class PoliCameraApp {
         detections.forEach(detection => {
             const { bbox, class: className, confidence, trackId } = detection;
 
+            // Validate bbox
+            if (!bbox || bbox.width <= 0 || bbox.height <= 0) return;
+
             // Scale bounding box to overlay dimensions
             const x = bbox.x * scaleX;
             const y = bbox.y * scaleY;
             const width = bbox.width * scaleX;
             const height = bbox.height * scaleY;
+
+            // Skip if scaled dimensions are too small
+            if (width < 5 || height < 5) return;
 
             // Get color for this class from AI manager
             const color = window.aiRecognitionManager ?
@@ -1082,39 +1091,34 @@ class PoliCameraApp {
             ctx.lineWidth = 3;
             ctx.strokeRect(x, y, width, height);
 
-            // Reset shadow for text
+            // Reset shadow for corners
             ctx.shadowBlur = 0;
 
-            // Draw corner accents for modern look
+            // Draw corner accents for modern look - all in one path for efficiency
             const cornerLength = Math.min(20, width / 4, height / 4);
             ctx.lineWidth = 4;
+            ctx.beginPath();
 
             // Top-left corner
-            ctx.beginPath();
             ctx.moveTo(x, y + cornerLength);
             ctx.lineTo(x, y);
             ctx.lineTo(x + cornerLength, y);
-            ctx.stroke();
 
             // Top-right corner
-            ctx.beginPath();
             ctx.moveTo(x + width - cornerLength, y);
             ctx.lineTo(x + width, y);
             ctx.lineTo(x + width, y + cornerLength);
-            ctx.stroke();
 
             // Bottom-left corner
-            ctx.beginPath();
             ctx.moveTo(x, y + height - cornerLength);
             ctx.lineTo(x, y + height);
             ctx.lineTo(x + cornerLength, y + height);
-            ctx.stroke();
 
             // Bottom-right corner
-            ctx.beginPath();
             ctx.moveTo(x + width - cornerLength, y + height);
             ctx.lineTo(x + width, y + height);
             ctx.lineTo(x + width, y + height - cornerLength);
+
             ctx.stroke();
 
             // Draw label with track ID if available
@@ -1197,6 +1201,7 @@ class PoliCameraApp {
 
     /**
      * Draw detection statistics overlay
+     * Optimized to only draw when overlay is visible and stats exist
      */
     drawDetectionStats(ctx) {
         if (!window.aiRecognitionManager) return;
@@ -1204,17 +1209,30 @@ class PoliCameraApp {
         const stats = aiRecognitionManager.getDetectionStatistics();
         if (!stats || stats.frameCount === 0) return;
 
+        // Only draw stats if we have overlay space
+        if (this.detectionOverlay.width < 250) return;
+
         // Draw stats in top-right corner
         const padding = 12;
         const lineHeight = 18;
-        const x = this.detectionOverlay.width - 200;
+        const statsWidth = 200;
+        const x = this.detectionOverlay.width - statsWidth - padding;
         let y = padding;
 
-        // Background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        const statsHeight = lineHeight * (2 + Object.keys(stats.classCounts).length);
-        this.drawRoundedRect(ctx, x - padding, y, 200, statsHeight + padding, 8);
+        // Calculate dynamic height based on class count
+        const sortedClasses = Object.entries(stats.classCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5); // Top 5 classes
+
+        const statsHeight = lineHeight * (2 + sortedClasses.length) + padding;
+
+        // Background with shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        this.drawRoundedRect(ctx, x - padding, y, statsWidth, statsHeight, 8);
         ctx.fill();
+        ctx.shadowBlur = 0;
 
         // Stats text
         ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -1227,13 +1245,10 @@ class PoliCameraApp {
         ctx.fillText(`📊 Avg: ${stats.averageDetectionsPerFrame}`, x, y);
 
         // Class breakdown
-        const sortedClasses = Object.entries(stats.classCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 5); // Top 5 classes
-
         if (sortedClasses.length > 0) {
             ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            sortedClasses.forEach(([className, count]) => {
+            for (let i = 0; i < sortedClasses.length; i++) {
+                const [className, count] = sortedClasses[i];
                 y += lineHeight;
                 const color = aiRecognitionManager.getClassColor(className);
 
@@ -1241,10 +1256,11 @@ class PoliCameraApp {
                 ctx.fillStyle = color;
                 ctx.fillRect(x, y - 8, 10, 10);
 
-                // Draw class name and count
+                // Draw class name and count (truncate long names)
                 ctx.fillStyle = '#FFFFFF';
-                ctx.fillText(`${className}: ${count}`, x + 15, y);
-            });
+                const displayName = className.length > 12 ? className.substring(0, 12) + '...' : className;
+                ctx.fillText(`${displayName}: ${count}`, x + 15, y);
+            }
         }
     }
 
