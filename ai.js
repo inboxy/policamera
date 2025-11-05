@@ -18,7 +18,7 @@ class AIRecognitionManager {
         // Performance optimization settings
         this.inputSize = 320; // Reduced from default 416 for faster processing
         this.maxFPS = 30;
-        this.skipFrames = 2; // Process every 3rd frame
+        this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
         this.targetFrameTime = 1000 / this.maxFPS;
@@ -35,8 +35,8 @@ class AIRecognitionManager {
         this.trackedObjects = [];
         this.objectIdCounter = 0;
         this.trackingIoUThreshold = 0.3;
-        this.minDetectionFrames = 2; // Require object to appear in N frames before displaying
-        this.maxMissingFrames = 5; // Remove object if not detected for N frames
+        this.minDetectionFrames = 1; // Show objects immediately for continuous display
+        this.maxMissingFrames = 3; // Shorter persistence to reduce false tracking
 
         // NMS settings
         this.nmsIoUThreshold = 0.5;
@@ -212,15 +212,17 @@ class AIRecognitionManager {
             }
         }
 
-        // Frame skipping for real-time performance
-        if (isRealTime) {
+        // Frame skipping for real-time performance (if configured)
+        if (isRealTime && this.skipFrames > 0) {
             this.frameCounter++;
             if (this.frameCounter <= this.skipFrames) {
                 return []; // Skip this frame
             }
             this.frameCounter = 0;
+        }
 
-            // FPS throttling
+        // FPS throttling - always check to prevent overload
+        if (isRealTime) {
             const currentTime = performance.now();
             if (currentTime - this.lastProcessTime < this.targetFrameTime) {
                 return []; // Too soon, skip this frame
@@ -1158,25 +1160,25 @@ class AIRecognitionManager {
 
         if (isHighPerformance) {
             // High-end device: more frequent processing, higher quality
-            this.skipFrames = 1; // Process every 2nd frame
+            this.skipFrames = 0; // Process every frame
             this.inputSize = 416; // Higher resolution
-            this.maxDetections = 15;
-            this.detectionThreshold = 0.3;
-            console.log('High performance mode enabled');
+            this.maxDetections = 20;
+            this.detectionThreshold = 0.25; // Lower threshold for more detections
+            console.log('High performance mode enabled - continuous detection');
         } else if (isMediumPerformance) {
             // Medium device: balanced settings
-            this.skipFrames = 2; // Process every 3rd frame
+            this.skipFrames = 0; // Process every frame
             this.inputSize = 320; // Medium resolution
-            this.maxDetections = 10;
-            this.detectionThreshold = 0.4;
-            console.log('Medium performance mode enabled');
+            this.maxDetections = 15;
+            this.detectionThreshold = 0.35; // Lower threshold for more detections
+            console.log('Medium performance mode enabled - continuous detection');
         } else {
-            // Low-end device: maximum optimization
-            this.skipFrames = 4; // Process every 5th frame
+            // Low-end device: still continuous but optimized
+            this.skipFrames = 1; // Process every 2nd frame minimum
             this.inputSize = 224; // Lower resolution
-            this.maxDetections = 5;
-            this.detectionThreshold = 0.5;
-            console.log('Low performance mode enabled');
+            this.maxDetections = 10;
+            this.detectionThreshold = 0.45; // Lower threshold for more detections
+            console.log('Low performance mode enabled - continuous detection');
         }
 
         // Cleanup
