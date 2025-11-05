@@ -31,6 +31,31 @@ class AIRecognitionManager {
         this.model = null;
         this.modelUrl = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2';
 
+        // Object tracking and smoothing
+        this.trackedObjects = [];
+        this.objectIdCounter = 0;
+        this.trackingIoUThreshold = 0.3;
+        this.minDetectionFrames = 2; // Require object to appear in N frames before displaying
+        this.maxMissingFrames = 5; // Remove object if not detected for N frames
+
+        // NMS settings
+        this.nmsIoUThreshold = 0.5;
+        this.enableNMS = true;
+
+        // Temporal smoothing settings
+        this.smoothingAlpha = 0.6; // Higher = more responsive, lower = smoother
+        this.enableSmoothing = true;
+
+        // Detection statistics
+        this.detectionStats = {
+            frameCount: 0,
+            totalDetections: 0,
+            classCounts: {}
+        };
+
+        // Class colors for visualization (Material Design inspired)
+        this.classColors = this.initializeClassColors();
+
         this.initializeWorker();
         this.adjustPerformanceSettings();
     }
@@ -303,6 +328,14 @@ class AIRecognitionManager {
                     }));
                 }
 
+                // Apply NMS to filter overlapping detections
+                detections = this.applyNMS(detections);
+
+                // Apply tracking for real-time detections
+                if (isRealTime) {
+                    detections = this.trackObjects(detections);
+                }
+
                 if (!isRealTime) {
                     console.log(`Detected ${detections.length} objects (worker):`, detections);
                 }
@@ -425,6 +458,14 @@ class AIRecognitionManager {
                 }));
             }
 
+            // Apply NMS to filter overlapping detections
+            filteredPredictions = this.applyNMS(filteredPredictions);
+
+            // Apply tracking for real-time detections
+            if (isRealTime) {
+                filteredPredictions = this.trackObjects(filteredPredictions);
+            }
+
             if (!isRealTime) {
                 console.log(`Detected ${filteredPredictions.length} objects (main thread):`, filteredPredictions);
             }
@@ -535,24 +576,107 @@ class AIRecognitionManager {
         const ctx = canvas.getContext('2d');
 
         detections.forEach(detection => {
-            const { bbox, class: className, confidence } = detection;
+            const { bbox, class: className, confidence, trackId } = detection;
 
-            // Draw bounding box
-            ctx.strokeStyle = '#B4F222';
-            ctx.lineWidth = 2;
+            // Get color for this class
+            const color = this.getClassColor(className);
+
+            // Draw bounding box with shadow for better visibility
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
             ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
 
-            // Draw label background
-            const label = `${className} (${confidence}%)`;
-            ctx.font = '14px Arial';
-            const textWidth = ctx.measureText(label).width;
+            // Reset shadow
+            ctx.shadowBlur = 0;
 
-            ctx.fillStyle = 'rgba(180, 242, 34, 0.8)';
-            ctx.fillRect(bbox.x, bbox.y - 25, textWidth + 10, 20);
+            // Draw corner accents for modern look
+            const cornerLength = Math.min(20, bbox.width / 4, bbox.height / 4);
+            ctx.lineWidth = 4;
 
-            // Draw label text
-            ctx.fillStyle = '#000';
-            ctx.fillText(label, bbox.x + 5, bbox.y - 10);
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(bbox.x, bbox.y + cornerLength);
+            ctx.lineTo(bbox.x, bbox.y);
+            ctx.lineTo(bbox.x + cornerLength, bbox.y);
+            ctx.stroke();
+
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(bbox.x + bbox.width - cornerLength, bbox.y);
+            ctx.lineTo(bbox.x + bbox.width, bbox.y);
+            ctx.lineTo(bbox.x + bbox.width, bbox.y + cornerLength);
+            ctx.stroke();
+
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(bbox.x, bbox.y + bbox.height - cornerLength);
+            ctx.lineTo(bbox.x, bbox.y + bbox.height);
+            ctx.lineTo(bbox.x + cornerLength, bbox.y + bbox.height);
+            ctx.stroke();
+
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(bbox.x + bbox.width - cornerLength, bbox.y + bbox.height);
+            ctx.lineTo(bbox.x + bbox.width, bbox.y + bbox.height);
+            ctx.lineTo(bbox.x + bbox.width, bbox.y + bbox.height - cornerLength);
+            ctx.stroke();
+
+            // Draw label with track ID if available
+            const label = trackId ? `${className} #${trackId} (${confidence}%)` : `${className} (${confidence}%)`;
+            ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            const textMetrics = ctx.measureText(label);
+            const textWidth = textMetrics.width;
+            const textHeight = 20;
+            const padding = 10;
+
+            // Draw label background with rounded corners
+            const labelX = bbox.x;
+            const labelY = bbox.y - textHeight - 8;
+
+            // Helper function to draw rounded rectangle
+            const drawRoundedRect = (x, y, width, height, radius) => {
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+            };
+
+            // Parse color to RGB
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+            drawRoundedRect(labelX, labelY, textWidth + padding * 2, textHeight + 4, 6);
+            ctx.fill();
+
+            // Draw label text with contrasting color
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            ctx.fillStyle = luminance > 0.5 ? '#000000' : '#FFFFFF';
+            ctx.fillText(label, labelX + padding, labelY + textHeight - 2);
+
+            // Draw confidence bar below bounding box
+            const barWidth = bbox.width;
+            const barHeight = 4;
+            const barX = bbox.x;
+            const barY = bbox.y + bbox.height + 4;
+
+            // Background bar
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+
+            // Confidence bar
+            ctx.fillStyle = color;
+            ctx.fillRect(barX, barY, barWidth * (confidence / 100), barHeight);
         });
     }
 
@@ -648,6 +772,302 @@ class AIRecognitionManager {
      * Clean up resources
      */
     /**
+     * Initialize class colors for different object types
+     */
+    initializeClassColors() {
+        return {
+            'person': '#E91E63',      // Pink
+            'bicycle': '#2196F3',     // Blue
+            'car': '#F44336',         // Red
+            'motorcycle': '#FF5722',  // Deep Orange
+            'airplane': '#00BCD4',    // Cyan
+            'bus': '#FF9800',         // Orange
+            'train': '#795548',       // Brown
+            'truck': '#FF6F00',       // Dark Orange
+            'boat': '#0097A7',        // Dark Cyan
+            'traffic light': '#FFEB3B', // Yellow
+            'fire hydrant': '#F44336', // Red
+            'stop sign': '#C62828',   // Dark Red
+            'parking meter': '#9E9E9E', // Grey
+            'bench': '#795548',       // Brown
+            'bird': '#4CAF50',        // Green
+            'cat': '#9C27B0',         // Purple
+            'dog': '#673AB7',         // Deep Purple
+            'horse': '#A1887F',       // Brown Grey
+            'sheep': '#E0E0E0',       // Light Grey
+            'cow': '#8D6E63',         // Brown
+            'elephant': '#757575',    // Grey
+            'bear': '#5D4037',        // Dark Brown
+            'zebra': '#212121',       // Almost Black
+            'giraffe': '#FDD835',     // Yellow
+            'backpack': '#3F51B5',    // Indigo
+            'umbrella': '#00ACC1',    // Cyan
+            'handbag': '#D81B60',     // Pink
+            'tie': '#1976D2',         // Blue
+            'suitcase': '#6D4C41',    // Brown
+            'frisbee': '#26C6DA',     // Cyan
+            'skis': '#0288D1',        // Blue
+            'snowboard': '#01579B',   // Dark Blue
+            'sports ball': '#FFA726', // Orange
+            'kite': '#EC407A',        // Pink
+            'baseball bat': '#8D6E63', // Brown
+            'baseball glove': '#A1887F', // Brown Grey
+            'skateboard': '#EF5350',  // Red
+            'surfboard': '#29B6F6',   // Light Blue
+            'tennis racket': '#66BB6A', // Green
+            'bottle': '#26A69A',      // Teal
+            'wine glass': '#AB47BC',  // Purple
+            'cup': '#42A5F5',         // Blue
+            'fork': '#BDBDBD',        // Grey
+            'knife': '#9E9E9E',       // Grey
+            'spoon': '#757575',       // Grey
+            'bowl': '#78909C',        // Blue Grey
+            'banana': '#FDD835',      // Yellow
+            'apple': '#EF5350',       // Red
+            'sandwich': '#F4E04D',    // Light Yellow
+            'orange': '#FF9800',      // Orange
+            'broccoli': '#4CAF50',    // Green
+            'carrot': '#FF6F00',      // Dark Orange
+            'hot dog': '#F4511E',     // Deep Orange
+            'pizza': '#FFCA28',       // Amber
+            'donut': '#FFAB91',       // Light Orange
+            'cake': '#F48FB1',        // Light Pink
+            'chair': '#8D6E63',       // Brown
+            'couch': '#A1887F',       // Brown Grey
+            'potted plant': '#66BB6A', // Green
+            'bed': '#90CAF9',         // Light Blue
+            'dining table': '#BCAAA4', // Brown Grey
+            'toilet': '#E0E0E0',      // Light Grey
+            'tv': '#212121',          // Almost Black
+            'laptop': '#616161',      // Dark Grey
+            'mouse': '#9E9E9E',       // Grey
+            'remote': '#424242',      // Dark Grey
+            'keyboard': '#757575',    // Grey
+            'cell phone': '#1976D2',  // Blue
+            'microwave': '#BDBDBD',   // Grey
+            'oven': '#424242',        // Dark Grey
+            'toaster': '#9E9E9E',     // Grey
+            'sink': '#B0BEC5',        // Blue Grey
+            'refrigerator': '#ECEFF1', // Light Blue Grey
+            'book': '#5C6BC0',        // Indigo
+            'clock': '#FFA726',       // Orange
+            'vase': '#AB47BC',        // Purple
+            'scissors': '#90A4AE',    // Blue Grey
+            'teddy bear': '#8D6E63',  // Brown
+            'hair drier': '#616161',  // Dark Grey
+            'toothbrush': '#26C6DA'   // Cyan
+        };
+    }
+
+    /**
+     * Get color for object class
+     */
+    getClassColor(className) {
+        return this.classColors[className] || '#B4F222'; // Default green
+    }
+
+    /**
+     * Calculate Intersection over Union (IoU) between two bounding boxes
+     */
+    calculateIoU(box1, box2) {
+        const x1 = Math.max(box1.x, box2.x);
+        const y1 = Math.max(box1.y, box2.y);
+        const x2 = Math.min(box1.x + box1.width, box2.x + box2.width);
+        const y2 = Math.min(box1.y + box1.height, box2.y + box2.height);
+
+        const intersectionWidth = Math.max(0, x2 - x1);
+        const intersectionHeight = Math.max(0, y2 - y1);
+        const intersectionArea = intersectionWidth * intersectionHeight;
+
+        const box1Area = box1.width * box1.height;
+        const box2Area = box2.width * box2.height;
+        const unionArea = box1Area + box2Area - intersectionArea;
+
+        return unionArea > 0 ? intersectionArea / unionArea : 0;
+    }
+
+    /**
+     * Apply Non-Maximum Suppression to filter overlapping detections
+     */
+    applyNMS(detections) {
+        if (!this.enableNMS || detections.length === 0) {
+            return detections;
+        }
+
+        // Sort detections by confidence (descending)
+        const sorted = [...detections].sort((a, b) => b.confidence - a.confidence);
+        const keep = [];
+
+        while (sorted.length > 0) {
+            const current = sorted.shift();
+            keep.push(current);
+
+            // Remove detections that overlap significantly with current
+            for (let i = sorted.length - 1; i >= 0; i--) {
+                if (sorted[i].class === current.class) {
+                    const iou = this.calculateIoU(current.bbox, sorted[i].bbox);
+                    if (iou > this.nmsIoUThreshold) {
+                        sorted.splice(i, 1);
+                    }
+                }
+            }
+        }
+
+        return keep;
+    }
+
+    /**
+     * Smooth bounding box using exponential moving average
+     */
+    smoothBoundingBox(newBox, oldBox) {
+        if (!this.enableSmoothing || !oldBox) {
+            return newBox;
+        }
+
+        const alpha = this.smoothingAlpha;
+        return {
+            x: Math.round(alpha * newBox.x + (1 - alpha) * oldBox.x),
+            y: Math.round(alpha * newBox.y + (1 - alpha) * oldBox.y),
+            width: Math.round(alpha * newBox.width + (1 - alpha) * oldBox.width),
+            height: Math.round(alpha * newBox.height + (1 - alpha) * oldBox.height)
+        };
+    }
+
+    /**
+     * Track objects across frames using IoU matching
+     */
+    trackObjects(detections) {
+        if (detections.length === 0) {
+            // Increment missing frame count for all tracked objects
+            this.trackedObjects.forEach(obj => obj.missingFrames++);
+
+            // Remove objects that have been missing too long
+            this.trackedObjects = this.trackedObjects.filter(
+                obj => obj.missingFrames < this.maxMissingFrames
+            );
+
+            return [];
+        }
+
+        // Match detections to existing tracked objects
+        const matchedDetections = [];
+        const unmatchedDetections = [...detections];
+
+        // Try to match each tracked object with a detection
+        this.trackedObjects.forEach(tracked => {
+            let bestMatch = null;
+            let bestIoU = 0;
+            let bestIndex = -1;
+
+            unmatchedDetections.forEach((detection, index) => {
+                if (detection.class === tracked.class) {
+                    const iou = this.calculateIoU(tracked.bbox, detection.bbox);
+                    if (iou > bestIoU && iou > this.trackingIoUThreshold) {
+                        bestMatch = detection;
+                        bestIoU = iou;
+                        bestIndex = index;
+                    }
+                }
+            });
+
+            if (bestMatch) {
+                // Update tracked object with smoothed bounding box
+                tracked.bbox = this.smoothBoundingBox(bestMatch.bbox, tracked.bbox);
+                tracked.confidence = bestMatch.confidence;
+                tracked.framesSeen++;
+                tracked.missingFrames = 0;
+
+                matchedDetections.push({
+                    ...bestMatch,
+                    bbox: tracked.bbox,
+                    trackId: tracked.id,
+                    framesSeen: tracked.framesSeen
+                });
+
+                // Remove matched detection
+                unmatchedDetections.splice(bestIndex, 1);
+            } else {
+                tracked.missingFrames++;
+            }
+        });
+
+        // Add unmatched detections as new tracked objects
+        unmatchedDetections.forEach(detection => {
+            this.trackedObjects.push({
+                id: ++this.objectIdCounter,
+                class: detection.class,
+                bbox: detection.bbox,
+                confidence: detection.confidence,
+                framesSeen: 1,
+                missingFrames: 0
+            });
+
+            matchedDetections.push({
+                ...detection,
+                trackId: this.objectIdCounter,
+                framesSeen: 1
+            });
+        });
+
+        // Remove objects that have been missing too long
+        this.trackedObjects = this.trackedObjects.filter(
+            obj => obj.missingFrames < this.maxMissingFrames
+        );
+
+        // Only return detections that have been seen for minimum frames
+        const stableDetections = matchedDetections.filter(
+            det => det.framesSeen >= this.minDetectionFrames
+        );
+
+        // Update statistics
+        this.updateDetectionStats(stableDetections);
+
+        return stableDetections;
+    }
+
+    /**
+     * Update detection statistics
+     */
+    updateDetectionStats(detections) {
+        this.detectionStats.frameCount++;
+        this.detectionStats.totalDetections += detections.length;
+
+        detections.forEach(detection => {
+            const className = detection.class;
+            if (!this.detectionStats.classCounts[className]) {
+                this.detectionStats.classCounts[className] = 0;
+            }
+            this.detectionStats.classCounts[className]++;
+        });
+    }
+
+    /**
+     * Get detection statistics
+     */
+    getDetectionStatistics() {
+        return {
+            ...this.detectionStats,
+            averageDetectionsPerFrame: this.detectionStats.frameCount > 0
+                ? (this.detectionStats.totalDetections / this.detectionStats.frameCount).toFixed(2)
+                : 0,
+            trackedObjectsCount: this.trackedObjects.length
+        };
+    }
+
+    /**
+     * Reset detection statistics
+     */
+    resetDetectionStats() {
+        this.detectionStats = {
+            frameCount: 0,
+            totalDetections: 0,
+            classCounts: {}
+        };
+        this.trackedObjects = [];
+        this.objectIdCounter = 0;
+    }
+
+    /**
      * Adjust performance settings based on device capabilities
      */
     adjustPerformanceSettings() {
@@ -711,6 +1131,12 @@ class AIRecognitionManager {
         }
         this.pendingMessages.clear();
         this.isModelLoaded = false;
+
+        // Clean up tracking state
+        this.trackedObjects = [];
+        this.objectIdCounter = 0;
+        this.resetDetectionStats();
+
         console.log('AI Recognition Manager cleaned up');
     }
 }
