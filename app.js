@@ -16,6 +16,7 @@ class PoliCameraApp {
         this.pointCloudGenerator = null;
         this.hasLoggedFirstDetection = false;
         this.hasLoggedDetectionError = false;
+        this.appVersion = '1.0.0'; // Default version
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -28,6 +29,7 @@ class PoliCameraApp {
         this.initializeStitcher();
         this.initializePointCloud();
         this.initializePullToRefresh();
+        this.loadVersion();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
@@ -72,6 +74,7 @@ class PoliCameraApp {
         this.gpsTimeDisplayEl = document.getElementById('gpsTimeDisplay');
         this.gpsHeadingDisplayEl = document.getElementById('gpsHeadingDisplay');
         this.gpsNetworkDisplayEl = document.getElementById('gpsNetworkDisplay');
+        this.gpsVersionDisplayEl = document.getElementById('gpsVersionDisplay');
 
         // WebVTT elements
         this.positionTrack = document.getElementById('positionTrack');
@@ -972,6 +975,27 @@ class PoliCameraApp {
             (networkInfo.effectiveType ? networkInfo.effectiveType.toUpperCase() : 'ONLINE') :
             'OFFLINE';
         this.gpsNetworkDisplayEl.textContent = networkText;
+
+        // Update version
+        this.gpsVersionDisplayEl.textContent = this.appVersion;
+    }
+
+    /**
+     * Load version from manifest
+     */
+    async loadVersion() {
+        try {
+            const response = await fetch('manifest.json');
+            const manifest = await response.json();
+            if (manifest.version) {
+                this.appVersion = manifest.version;
+                this.gpsVersionDisplayEl.textContent = this.appVersion;
+                console.log('📱 PoliCamera version:', this.appVersion);
+            }
+        } catch (error) {
+            console.warn('Failed to load version from manifest:', error);
+            // Keep default version
+        }
     }
 
     startGPSDisplayUpdates() {
