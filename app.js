@@ -18,6 +18,7 @@ class PoliCameraApp {
         this.appVersion = '1.0.0'; // Default version
         this.isPoseEstimationEnabled = false;
         this.currentPoses = [];
+        this.isGPSMinimized = false;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -74,6 +75,8 @@ class PoliCameraApp {
         this.gpsHeadingDisplayEl = document.getElementById('gpsHeadingDisplay');
         this.gpsNetworkDisplayEl = document.getElementById('gpsNetworkDisplay');
         this.gpsVersionDisplayEl = document.getElementById('gpsVersionDisplay');
+        this.gpsOverlay = document.getElementById('gpsOverlay');
+        this.gpsToggle = document.getElementById('gpsToggle');
 
         // WebVTT elements
         this.positionTrack = document.getElementById('positionTrack');
@@ -86,6 +89,10 @@ class PoliCameraApp {
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
+        this.gpsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleGPSOverlay();
+        });
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -692,6 +699,16 @@ class PoliCameraApp {
         } catch (error) {
             console.error('Failed to toggle pose estimation:', error);
             this.showError('Failed to initialize pose estimation');
+        }
+    }
+
+    toggleGPSOverlay() {
+        this.isGPSMinimized = !this.isGPSMinimized;
+
+        if (this.isGPSMinimized) {
+            this.gpsOverlay.classList.add('minimized');
+        } else {
+            this.gpsOverlay.classList.remove('minimized');
         }
     }
 

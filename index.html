@@ -39,19 +39,26 @@
 
             <!-- GPS Coordinates Overlay -->
             <div class="gps-overlay" id="gpsOverlay">
-                <div class="gps-title">GPS COORDINATES</div>
-                <div class="gps-coords">
-                    <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
-                    <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                <div class="gps-header">
+                    <div class="gps-title">GPS COORDINATES</div>
+                    <button class="gps-toggle" id="gpsToggle" aria-label="Toggle GPS overlay">
+                        <span class="material-icons">expand_less</span>
+                    </button>
                 </div>
-                <div class="gps-details">
-                    <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
-                    <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
-                    <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
-                    <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
-                    <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
-                    <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
-                    <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                <div class="gps-content" id="gpsContent">
+                    <div class="gps-coords">
+                        <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
+                        <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                    </div>
+                    <div class="gps-details">
+                        <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
+                        <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
+                        <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
+                        <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
+                        <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
+                        <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
+                        <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                    </div>
                 </div>
             </div>
 
