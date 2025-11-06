@@ -18,6 +18,8 @@ class PoliCameraApp {
         this.appVersion = '1.0.0'; // Default version
         this.isPoseEstimationEnabled = false;
         this.currentPoses = [];
+        this.isFaceDetectionEnabled = false;
+        this.currentFaces = [];
         this.isGPSMinimized = false;
 
         this.initializeElements();
@@ -51,6 +53,7 @@ class PoliCameraApp {
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
         this.poseFab = document.getElementById('poseFab');
+        this.faceFab = document.getElementById('faceFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
 
@@ -88,6 +91,7 @@ class PoliCameraApp {
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
+        this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
         this.gpsToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -544,6 +548,7 @@ class PoliCameraApp {
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
                 this.poseFab.style.display = 'flex';
+                this.faceFab.style.display = 'flex';
             }
 
             // Show errors if any
@@ -702,6 +707,30 @@ class PoliCameraApp {
         }
     }
 
+    async toggleFaceDetection() {
+        if (!window.faceDetectionManager) {
+            this.showError('Face detection not available');
+            return;
+        }
+
+        try {
+            const isEnabled = await faceDetectionManager.toggle();
+            this.isFaceDetectionEnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.faceFab.classList.add('active');
+                this.showToast('Face detection enabled', 'face');
+            } else {
+                this.faceFab.classList.remove('active');
+                this.showToast('Face detection disabled', 'face');
+            }
+        } catch (error) {
+            console.error('Failed to toggle face detection:', error);
+            this.showError('Failed to initialize face detection');
+        }
+    }
+
     toggleGPSOverlay() {
         this.isGPSMinimized = !this.isGPSMinimized;
 
@@ -765,6 +794,19 @@ class PoliCameraApp {
             }
         }
 
+        // Run face detection on the captured image
+        let faceData = null;
+        if (this.isFaceDetectionEnabled && window.faceDetectionManager) {
+            try {
+                console.log('Running face detection on captured photo...');
+                const faces = await faceDetectionManager.detectFaces(canvas, false);
+                faceData = faceDetectionManager.exportFaceData(faces);
+                console.log('Face detection results:', faceData);
+            } catch (error) {
+                console.error('Face detection failed:', error);
+            }
+        }
+
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
@@ -775,7 +817,8 @@ class PoliCameraApp {
             orientation: this.getCurrentOrientation(),
             networkInfo: networkManager.getNetworkInfo(),
             aiAnalysis: aiAnalysis,
-            poseData: poseData
+            poseData: poseData,
+            faceData: faceData
         };
 
         this.capturedPhotos.push(photo);
@@ -996,7 +1039,41 @@ class PoliCameraApp {
             }
         }
 
-        details.innerHTML = basicInfo + aiInfo + poseInfo;
+        // Face detection section
+        let faceInfo = '';
+        if (photo.faceData) {
+            if (photo.faceData.faceCount > 0) {
+                faceInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>👤 Face Detection:</strong></div>
+                    <div style="margin-left: 16px;">
+                        <div><strong>Faces Detected:</strong> ${photo.faceData.faceCount}</div>
+                        <div style="margin-top: 8px;">
+                `;
+
+                photo.faceData.faces.forEach((face, index) => {
+                    const landmarkCount = face.landmarks.length;
+                    faceInfo += `
+                        <div style="margin: 8px 0; padding: 8px; background: var(--md-sys-color-surface-variant); border-radius: 4px;">
+                            <strong>Face ${index + 1}</strong> (${Math.round(face.score * 100)}% confidence)<br>
+                            <span style="font-size: 12px;">Landmarks detected: ${landmarkCount}</span>
+                        </div>
+                    `;
+                });
+
+                faceInfo += `
+                        </div>
+                    </div>
+                `;
+            } else {
+                faceInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>👤 Face Detection:</strong> No faces detected</div>
+                `;
+            }
+        }
+
+        details.innerHTML = basicInfo + aiInfo + poseInfo + faceInfo;
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
@@ -1336,6 +1413,13 @@ class PoliCameraApp {
                 this.currentPoses = [];
             }
 
+            // Detect faces if enabled
+            if (this.isFaceDetectionEnabled && window.faceDetectionManager) {
+                this.currentFaces = await faceDetectionManager.detectFaces(this.video, true);
+            } else {
+                this.currentFaces = [];
+            }
+
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
@@ -1374,8 +1458,8 @@ class PoliCameraApp {
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
 
-        // Draw "AI Active" indicator in corner when no detections and no poses
-        if (detections.length === 0 && this.currentPoses.length === 0) {
+        // Draw "AI Active" indicator in corner when no detections, poses, or faces
+        if (detections.length === 0 && this.currentPoses.length === 0 && this.currentFaces.length === 0) {
             this.drawAIActiveIndicator(ctx);
             this.drawDetectionStats(ctx);
             return;
@@ -1477,6 +1561,12 @@ class PoliCameraApp {
         if (this.isPoseEstimationEnabled && this.currentPoses.length > 0 && window.poseEstimationManager) {
             const scale = { x: scaleX, y: scaleY };
             poseEstimationManager.drawPoses(ctx, this.currentPoses, scale);
+        }
+
+        // Draw faces if enabled
+        if (this.isFaceDetectionEnabled && this.currentFaces.length > 0 && window.faceDetectionManager) {
+            const scale = { x: scaleX, y: scaleY };
+            faceDetectionManager.drawFaces(ctx, this.currentFaces, scale);
         }
 
         // Draw detection statistics overlay
@@ -1821,6 +1911,10 @@ class PoliCameraApp {
         // Cleanup pose estimation
         if (window.poseEstimationManager) {
             poseEstimationManager.cleanup();
+        }
+        // Cleanup face detection
+        if (window.faceDetectionManager) {
+            faceDetectionManager.cleanup();
         }
     }
 }

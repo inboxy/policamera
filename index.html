@@ -105,17 +105,23 @@
         <button class="fab pose-fab" id="poseFab" aria-label="Toggle pose estimation" style="display: none;">
             <span class="material-icons">accessibility_new</span>
         </button>
+
+        <button class="fab face-fab" id="faceFab" aria-label="Toggle face detection" style="display: none;">
+            <span class="material-icons">face</span>
+        </button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
     <script src="database.js"></script>
     <script src="qr.js"></script>
     <script src="network.js"></script>
     <script src="stitch.js"></script>
     <script src="ai.js"></script>
     <script src="pose.js"></script>
+    <script src="face.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
