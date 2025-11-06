@@ -16,6 +16,8 @@ class PoliCameraApp {
         this.hasLoggedFirstDetection = false;
         this.hasLoggedDetectionError = false;
         this.appVersion = '1.0.0'; // Default version
+        this.isPoseEstimationEnabled = false;
+        this.currentPoses = [];
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -47,6 +49,7 @@ class PoliCameraApp {
         this.captureFab = document.getElementById('captureFab');
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
+        this.poseFab = document.getElementById('poseFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
 
@@ -81,6 +84,7 @@ class PoliCameraApp {
         this.captureFab.addEventListener('click', () => this.capturePhoto());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
+        this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
 
         // Handle visibility change for camera
@@ -532,6 +536,7 @@ class PoliCameraApp {
 
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
+                this.poseFab.style.display = 'flex';
             }
 
             // Show errors if any
@@ -666,6 +671,30 @@ class PoliCameraApp {
         qrCodeManager.showQRCode();
     }
 
+    async togglePoseEstimation() {
+        if (!window.poseEstimationManager) {
+            this.showError('Pose estimation not available');
+            return;
+        }
+
+        try {
+            const isEnabled = await poseEstimationManager.toggle();
+            this.isPoseEstimationEnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.poseFab.classList.add('active');
+                this.showToast('Pose estimation enabled', 'accessibility_new');
+            } else {
+                this.poseFab.classList.remove('active');
+                this.showToast('Pose estimation disabled', 'accessibility_new');
+            }
+        } catch (error) {
+            console.error('Failed to toggle pose estimation:', error);
+            this.showError('Failed to initialize pose estimation');
+        }
+    }
+
     pauseCamera() {
         if (this.video.srcObject) {
             this.video.pause();
@@ -706,6 +735,19 @@ class PoliCameraApp {
             }
         }
 
+        // Run pose estimation on the captured image
+        let poseData = null;
+        if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
+            try {
+                console.log('Running pose estimation on captured photo...');
+                const poses = await poseEstimationManager.detectPoses(canvas, false);
+                poseData = poseEstimationManager.exportPoseData(poses);
+                console.log('Pose estimation results:', poseData);
+            } catch (error) {
+                console.error('Pose estimation failed:', error);
+            }
+        }
+
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
@@ -715,7 +757,8 @@ class PoliCameraApp {
             location: this.getCurrentLocation(),
             orientation: this.getCurrentOrientation(),
             networkInfo: networkManager.getNetworkInfo(),
-            aiAnalysis: aiAnalysis
+            aiAnalysis: aiAnalysis,
+            poseData: poseData
         };
 
         this.capturedPhotos.push(photo);
@@ -902,7 +945,41 @@ class PoliCameraApp {
             }
         }
 
-        details.innerHTML = basicInfo + aiInfo;
+        // Pose estimation section
+        let poseInfo = '';
+        if (photo.poseData) {
+            if (photo.poseData.poseCount > 0) {
+                poseInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🏃 Pose Estimation:</strong></div>
+                    <div style="margin-left: 16px;">
+                        <div><strong>People Detected:</strong> ${photo.poseData.poseCount}</div>
+                        <div style="margin-top: 8px;">
+                `;
+
+                photo.poseData.poses.forEach((pose, index) => {
+                    const keypointCount = pose.keypoints.length;
+                    poseInfo += `
+                        <div style="margin: 8px 0; padding: 8px; background: var(--md-sys-color-surface-variant); border-radius: 4px;">
+                            <strong>Person ${index + 1}</strong> (${Math.round(pose.score * 100)}% confidence)<br>
+                            <span style="font-size: 12px;">Keypoints detected: ${keypointCount}</span>
+                        </div>
+                    `;
+                });
+
+                poseInfo += `
+                        </div>
+                    </div>
+                `;
+            } else {
+                poseInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🏃 Pose Estimation:</strong> No people detected</div>
+                `;
+            }
+        }
+
+        details.innerHTML = basicInfo + aiInfo + poseInfo;
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
@@ -1235,6 +1312,13 @@ class PoliCameraApp {
             // Run optimized real-time detection directly on video element
             const detections = await aiRecognitionManager.detectObjects(this.video, true);
 
+            // Detect poses if enabled
+            if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
+                this.currentPoses = await poseEstimationManager.detectPoses(this.video, true);
+            } else {
+                this.currentPoses = [];
+            }
+
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
@@ -1265,13 +1349,6 @@ class PoliCameraApp {
         // Clear previous detections
         ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
 
-        // Draw "AI Active" indicator in corner when no detections
-        if (detections.length === 0) {
-            this.drawAIActiveIndicator(ctx);
-            this.drawDetectionStats(ctx);
-            return;
-        }
-
         // Validate video dimensions
         if (!this.video.videoWidth || !this.video.videoHeight) return;
 
@@ -1279,6 +1356,13 @@ class PoliCameraApp {
         const videoRect = this.video.getBoundingClientRect();
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
+
+        // Draw "AI Active" indicator in corner when no detections and no poses
+        if (detections.length === 0 && this.currentPoses.length === 0) {
+            this.drawAIActiveIndicator(ctx);
+            this.drawDetectionStats(ctx);
+            return;
+        }
 
         detections.forEach(detection => {
             const { bbox, class: className, confidence, trackId } = detection;
@@ -1371,6 +1455,12 @@ class PoliCameraApp {
             ctx.fillStyle = color;
             ctx.fillRect(barX, barY, barWidth * (confidence / 100), barHeight);
         });
+
+        // Draw poses if enabled
+        if (this.isPoseEstimationEnabled && this.currentPoses.length > 0 && window.poseEstimationManager) {
+            const scale = { x: scaleX, y: scaleY };
+            poseEstimationManager.drawPoses(ctx, this.currentPoses, scale);
+        }
 
         // Draw detection statistics overlay
         this.drawDetectionStats(ctx);
@@ -1542,6 +1632,45 @@ class PoliCameraApp {
         }, 4000);
     }
 
+    showToast(message, icon = null) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            padding: 12px 24px;
+            border-radius: 24px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: var(--md-sys-elevation-level2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+
+        if (icon) {
+            const iconEl = document.createElement('span');
+            iconEl.className = 'material-icons';
+            iconEl.style.fontSize = '20px';
+            iconEl.textContent = icon;
+            toast.appendChild(iconEl);
+        }
+
+        const textEl = document.createElement('span');
+        textEl.textContent = message;
+        toast.appendChild(textEl);
+
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 2000);
+    }
+
     initializeStitcher() {
         this.imageStitcher = new ImageStitcher();
         this.updateStitchButton();
@@ -1671,6 +1800,10 @@ class PoliCameraApp {
         // Cleanup AI worker
         if (window.aiRecognitionManager) {
             aiRecognitionManager.cleanup();
+        }
+        // Cleanup pose estimation
+        if (window.poseEstimationManager) {
+            poseEstimationManager.cleanup();
         }
     }
 }

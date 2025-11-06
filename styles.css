@@ -442,6 +442,21 @@ body {
   border: 2px solid var(--md-sys-color-outline);
 }
 
+/* Pose FAB */
+.pose-fab {
+  bottom: 248px;
+  right: 24px;
+  background-color: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  transition: all 0.3s ease;
+}
+
+.pose-fab.active {
+  background-color: var(--md-sys-color-tertiary);
+  color: var(--md-sys-color-on-tertiary);
+  box-shadow: 0 0 20px var(--md-sys-color-tertiary);
+}
+
 /* Settings FAB */
 .settings-fab {
   top: 24px;
@@ -675,6 +690,11 @@ body {
 
   .qr-fab {
     bottom: 144px;
+    right: 16px;
+  }
+
+  .pose-fab {
+    bottom: 208px;
     right: 16px;
   }
 
