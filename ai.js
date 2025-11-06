@@ -5,31 +5,31 @@
 class AIRecognitionManager {
     constructor() {
         this.worker = null;
-        this.isWorkerSupported = false; // Disabled for YOLOv8 ONNX Runtime
+        this.isWorkerSupported = false; // Disabled for optimized direct TF.js
         this.isModelLoaded = false;
         this.isLoading = false;
         this.messageId = 0;
         this.pendingMessages = new Map();
-        this.detectionThreshold = 0.3; // Lower for better detection
-        this.maxDetections = 20; // More detections with faster YOLOv8
+        this.detectionThreshold = 0.5; // Higher for faster filtering
+        this.maxDetections = 15; // Reasonable limit
         this.workerFailureCount = 0;
         this.maxWorkerFailures = 3;
 
-        // Performance optimization settings - Optimized for maximum speed
-        this.inputSize = 224; // Reduced for faster processing (with monochrome)
-        this.maxFPS = 30; // 30 FPS for balanced performance
-        this.skipFrames = 0; // Process every frame for continuous detection
+        // Performance optimization settings - Ultra-fast config
+        this.inputSize = 192; // Balanced for speed and accuracy
+        this.maxFPS = 30; // 30 FPS target
+        this.skipFrames = 0; // Process every frame
         this.frameCounter = 0;
         this.lastProcessTime = 0;
         this.targetFrameTime = 1000 / this.maxFPS;
 
         // Canvas pooling for better memory management
         this.canvasPool = [];
-        this.maxPoolSize = 3;
+        this.maxPoolSize = 2;
 
         // Fallback properties for non-worker mode
         this.model = null;
-        this.modelUrl = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2';
+        this.modelBase = 'lite_mobilenet_v2'; // Fastest model
 
         // Object tracking and smoothing
         this.trackedObjects = [];
@@ -38,9 +38,9 @@ class AIRecognitionManager {
         this.minDetectionFrames = 1; // Show objects immediately for continuous display
         this.maxMissingFrames = 5; // Longer persistence to maintain tracking through brief occlusions
 
-        // NMS settings (disabled for YOLOv8 - it has built-in NMS)
+        // NMS settings
         this.nmsIoUThreshold = 0.5;
-        this.enableNMS = false;
+        this.enableNMS = true;
 
         // Temporal smoothing settings - Optimized for sticky tracking
         this.smoothingAlpha = 0.75; // Higher = more responsive, lower = smoother
@@ -182,27 +182,29 @@ class AIRecognitionManager {
      */
     async initializeModelMainThread() {
         try {
-            // Check if YOLOv8 detector is available
-            if (typeof yolov8Detector === 'undefined') {
-                throw new Error('YOLOv8 detector not loaded');
+            // Check if TensorFlow.js is available
+            if (typeof tf === 'undefined') {
+                throw new Error('TensorFlow.js not loaded');
             }
 
-            // Set input size for YOLOv8
-            yolov8Detector.setInputSize(this.inputSize);
-
-            // Load the YOLOv8 model
-            const success = await yolov8Detector.loadModel();
-            if (!success) {
-                throw new Error('Failed to load YOLOv8 model');
+            // Check if COCO-SSD model is available
+            if (typeof cocoSsd === 'undefined') {
+                throw new Error('COCO-SSD model not loaded');
             }
 
-            this.model = yolov8Detector;
+            console.log('🚀 Loading COCO-SSD with lite_mobilenet_v2 for maximum speed...');
+
+            // Load COCO-SSD with fastest base model
+            this.model = await cocoSsd.load({
+                base: this.modelBase
+            });
+
             this.isModelLoaded = true;
-            console.log('✅ YOLOv8 model loaded successfully (main thread)');
+            console.log('✅ COCO-SSD model loaded successfully (ultra-fast mode)');
 
             return true;
         } catch (error) {
-            console.error('❌ Failed to load YOLOv8 model on main thread:', error);
+            console.error('❌ Failed to load COCO-SSD model:', error);
             return false;
         }
     }
@@ -464,16 +466,26 @@ class AIRecognitionManager {
             }
 
             if (!isRealTime) {
-                console.log('Running YOLOv8 detection (main thread)...');
+                console.log('Running COCO-SSD detection (ultra-fast mode)...');
             }
 
-            // YOLOv8 returns detections in our standard format already
+            // Run COCO-SSD detection
             const predictions = await this.model.detect(processElement);
 
-            // Filter by confidence and limit detections
+            // Convert COCO-SSD format to our standard format and filter
             let filteredPredictions = predictions
-                .filter(prediction => prediction.confidence >= this.detectionThreshold * 100)
-                .slice(0, this.maxDetections);
+                .filter(prediction => prediction.score >= this.detectionThreshold)
+                .slice(0, this.maxDetections)
+                .map(prediction => ({
+                    class: prediction.class,
+                    confidence: Math.round(prediction.score * 100),
+                    bbox: {
+                        x: Math.round(prediction.bbox[0]),
+                        y: Math.round(prediction.bbox[1]),
+                        width: Math.round(prediction.bbox[2]),
+                        height: Math.round(prediction.bbox[3])
+                    }
+                }));
 
             // Scale bounding boxes back if we downscaled
             if (isRealTime && canvas && processElement === canvas) {
