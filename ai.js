@@ -34,22 +34,24 @@ class AIRecognitionManager {
         // Object tracking and smoothing
         this.trackedObjects = [];
         this.objectIdCounter = 0;
-        this.trackingIoUThreshold = 0.3;
+        this.trackingIoUThreshold = 0.4; // Higher threshold for more confident matching
         this.minDetectionFrames = 1; // Show objects immediately for continuous display
-        this.maxMissingFrames = 3; // Shorter persistence to reduce false tracking
+        this.maxMissingFrames = 5; // Longer persistence to maintain tracking through brief occlusions
 
         // NMS settings
         this.nmsIoUThreshold = 0.5;
         this.enableNMS = true;
 
-        // Temporal smoothing settings - Optimized for speed
-        this.smoothingAlpha = 0.7; // Higher = more responsive, lower = smoother
+        // Temporal smoothing settings - Optimized for sticky tracking
+        this.smoothingAlpha = 0.75; // Higher = more responsive, lower = smoother
         this.enableSmoothing = true; // Keep enabled for stability
+        this.adaptiveSmoothing = true; // Adjust smoothing based on motion speed
 
         // Velocity-based tracking for better following
         this.enableVelocityTracking = true;
-        this.velocitySmoothing = 0.6; // Smoothing factor for velocity
-        this.predictionWeight = 0.3; // How much to trust velocity prediction
+        this.velocitySmoothing = 0.7; // Higher smoothing for more stable velocity
+        this.predictionWeight = 0.5; // Increased trust in velocity prediction for better sticking
+        this.maxVelocity = 500; // Maximum velocity (pixels per second) to prevent jumps
 
         // Detection statistics
         this.detectionStats = {
@@ -951,7 +953,7 @@ class AIRecognitionManager {
     /**
      * Smooth bounding box using exponential moving average
      */
-    smoothBoundingBox(newBox, oldBox, velocity = null, deltaTime = 1) {
+    smoothBoundingBox(newBox, oldBox, velocity = null, deltaTime = 1, motionMagnitude = 0) {
         if (!this.enableSmoothing || !oldBox || !newBox) {
             return newBox;
         }
@@ -961,7 +963,15 @@ class AIRecognitionManager {
             return newBox;
         }
 
-        const alpha = this.smoothingAlpha;
+        // Adaptive alpha based on motion speed - faster objects need more responsive tracking
+        let alpha = this.smoothingAlpha;
+        if (this.adaptiveSmoothing && motionMagnitude > 0) {
+            // Scale alpha up for faster motion (0-100 pixels/sec -> 0.75-0.95)
+            const motionFactor = Math.min(motionMagnitude / 100, 1.0);
+            alpha = this.smoothingAlpha + (0.2 * motionFactor); // Increase up to 0.95 for fast motion
+            alpha = Math.min(0.95, alpha);
+        }
+
         let smoothed;
 
         // Use velocity-based prediction if enabled and velocity is provided
@@ -1008,11 +1018,20 @@ class AIRecognitionManager {
         }
 
         // Calculate instantaneous velocity
-        const instantVelocity = {
+        let instantVelocity = {
             x: (newBox.x - tracked.bbox.x) / deltaTime,
             y: (newBox.y - tracked.bbox.y) / deltaTime,
             width: (newBox.width - tracked.bbox.width) / deltaTime,
             height: (newBox.height - tracked.bbox.height) / deltaTime
+        };
+
+        // Clamp velocity to prevent unrealistic jumps (likely detection errors)
+        const clamp = (val, max) => Math.max(-max, Math.min(max, val));
+        instantVelocity = {
+            x: clamp(instantVelocity.x, this.maxVelocity),
+            y: clamp(instantVelocity.y, this.maxVelocity),
+            width: clamp(instantVelocity.width, this.maxVelocity),
+            height: clamp(instantVelocity.height, this.maxVelocity)
         };
 
         // Smooth velocity using exponential moving average
@@ -1023,6 +1042,12 @@ class AIRecognitionManager {
             width: vAlpha * instantVelocity.width + (1 - vAlpha) * tracked.velocity.width,
             height: vAlpha * instantVelocity.height + (1 - vAlpha) * tracked.velocity.height
         };
+
+        // Store motion magnitude for adaptive smoothing
+        tracked.motionMagnitude = Math.sqrt(
+            tracked.velocity.x * tracked.velocity.x +
+            tracked.velocity.y * tracked.velocity.y
+        );
     }
 
     /**
@@ -1079,7 +1104,14 @@ class AIRecognitionManager {
                 this.updateVelocity(tracked, bestMatch.bbox, deltaTime);
 
                 // Update tracked object with velocity-based smoothed bounding box
-                tracked.bbox = this.smoothBoundingBox(bestMatch.bbox, tracked.bbox, tracked.velocity, deltaTime);
+                // Pass motion magnitude for adaptive smoothing
+                tracked.bbox = this.smoothBoundingBox(
+                    bestMatch.bbox,
+                    tracked.bbox,
+                    tracked.velocity,
+                    deltaTime,
+                    tracked.motionMagnitude || 0
+                );
                 tracked.confidence = bestMatch.confidence;
                 tracked.framesSeen++;
                 tracked.missingFrames = 0;
@@ -1115,6 +1147,7 @@ class AIRecognitionManager {
                 framesSeen: 1,
                 missingFrames: 0,
                 velocity: { x: 0, y: 0, width: 0, height: 0 }, // Track velocity for prediction
+                motionMagnitude: 0, // Motion speed for adaptive smoothing
                 lastUpdateTime: performance.now()
             });
 
