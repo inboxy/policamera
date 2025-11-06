@@ -39,19 +39,26 @@
 
             <!-- GPS Coordinates Overlay -->
             <div class="gps-overlay" id="gpsOverlay">
-                <div class="gps-title">GPS COORDINATES</div>
-                <div class="gps-coords">
-                    <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
-                    <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                <div class="gps-header">
+                    <div class="gps-title">GPS COORDINATES</div>
+                    <button class="gps-toggle" id="gpsToggle" aria-label="Toggle GPS overlay">
+                        <span class="material-icons">expand_less</span>
+                    </button>
                 </div>
-                <div class="gps-details">
-                    <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
-                    <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
-                    <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
-                    <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
-                    <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
-                    <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
-                    <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                <div class="gps-content" id="gpsContent">
+                    <div class="gps-coords">
+                        <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
+                        <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                    </div>
+                    <div class="gps-details">
+                        <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
+                        <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
+                        <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
+                        <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
+                        <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
+                        <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
+                        <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                    </div>
                 </div>
             </div>
 
@@ -71,10 +78,6 @@
                         <button class="stitch-btn" id="stitchBtn" aria-label="Stitch selected photos">
                             <span class="material-icons">collections</span>
                             Stitch Photos
-                        </button>
-                        <button class="pointcloud-btn" id="pointcloudBtn" aria-label="Generate point cloud from selected photos">
-                            <span class="material-icons">3d_rotation</span>
-                            Generate Point Cloud
                         </button>
                     </div>
                 </div>
@@ -98,16 +101,27 @@
         <button class="fab qr-fab" id="qrFab" aria-label="Show QR code">
             <span class="material-icons">qr_code</span>
         </button>
+
+        <button class="fab pose-fab" id="poseFab" aria-label="Toggle pose estimation" style="display: none;">
+            <span class="material-icons">accessibility_new</span>
+        </button>
+
+        <button class="fab face-fab" id="faceFab" aria-label="Toggle face detection" style="display: none;">
+            <span class="material-icons">face</span>
+        </button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
     <script src="database.js"></script>
     <script src="qr.js"></script>
     <script src="network.js"></script>
     <script src="stitch.js"></script>
-    <script src="pointcloud.js"></script>
     <script src="ai.js"></script>
+    <script src="pose.js"></script>
+    <script src="face.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
