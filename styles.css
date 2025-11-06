@@ -234,16 +234,80 @@ body {
   backdrop-filter: blur(8px);
   min-width: 240px;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+  transition: all 0.3s ease;
+}
+
+.gps-overlay:hover {
+  background-color: rgba(20, 21, 20, 0.8);
+  border-color: rgba(180, 242, 34, 0.8);
+}
+
+.gps-overlay.minimized {
+  min-width: auto;
+  padding: 8px 12px;
+}
+
+.gps-overlay.minimized .gps-content {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.gps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .gps-title {
   font-size: 10px;
   font-weight: 600;
   text-align: center;
-  margin-bottom: 8px;
   letter-spacing: 0.3px;
-  border-bottom: 1px solid rgba(180, 242, 34, 0.6);
-  padding-bottom: 4px;
+  flex: 1;
+}
+
+.gps-toggle {
+  background: none;
+  border: none;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.gps-toggle:hover {
+  color: rgba(180, 242, 34, 1);
+}
+
+.gps-toggle .material-icons {
+  font-size: 18px;
+  transition: transform 0.3s ease;
+}
+
+.gps-overlay.minimized .gps-toggle .material-icons {
+  transform: rotate(180deg);
+}
+
+.gps-content {
+  max-height: 500px;
+  opacity: 1;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(180, 242, 34, 0.6);
 }
 
 .gps-coords {
@@ -442,6 +506,36 @@ body {
   border: 2px solid var(--md-sys-color-outline);
 }
 
+/* Pose FAB */
+.pose-fab {
+  bottom: 248px;
+  right: 24px;
+  background-color: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  transition: all 0.3s ease;
+}
+
+.pose-fab.active {
+  background-color: var(--md-sys-color-tertiary);
+  color: var(--md-sys-color-on-tertiary);
+  box-shadow: 0 0 20px var(--md-sys-color-tertiary);
+}
+
+/* Face FAB */
+.face-fab {
+  bottom: 320px;
+  right: 24px;
+  background-color: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  transition: all 0.3s ease;
+}
+
+.face-fab.active {
+  background-color: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+  box-shadow: 0 0 20px var(--md-sys-color-error);
+}
+
 /* Settings FAB */
 .settings-fab {
   top: 24px;
@@ -514,7 +608,7 @@ body {
   flex-wrap: wrap;
 }
 
-.stitch-btn, .pointcloud-btn {
+.stitch-btn {
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   border: none;
@@ -531,12 +625,7 @@ body {
   justify-content: center;
 }
 
-.pointcloud-btn {
-  background-color: var(--md-sys-color-secondary);
-  color: var(--md-sys-color-on-secondary);
-}
-
-.stitch-btn:disabled, .pointcloud-btn:disabled {
+.stitch-btn:disabled {
   background-color: var(--md-sys-color-surface-variant);
   color: var(--md-sys-color-on-surface-variant);
   cursor: not-allowed;
@@ -544,11 +633,6 @@ body {
 
 .stitch-btn:not(:disabled):hover {
   background-color: var(--md-sys-color-primary-container);
-  transform: translateY(-1px);
-}
-
-.pointcloud-btn:not(:disabled):hover {
-  background-color: var(--md-sys-color-secondary-container);
   transform: translateY(-1px);
 }
 
@@ -685,6 +769,16 @@ body {
 
   .qr-fab {
     bottom: 144px;
+    right: 16px;
+  }
+
+  .pose-fab {
+    bottom: 208px;
+    right: 16px;
+  }
+
+  .face-fab {
+    bottom: 272px;
     right: 16px;
   }
 

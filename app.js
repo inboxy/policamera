@@ -13,10 +13,14 @@ class PoliCameraApp {
         this.isDetectionRunning = false;
         this.imageStitcher = null;
         this.selectedPhotos = new Set();
-        this.pointCloudGenerator = null;
         this.hasLoggedFirstDetection = false;
         this.hasLoggedDetectionError = false;
         this.appVersion = '1.0.0'; // Default version
+        this.isPoseEstimationEnabled = false;
+        this.currentPoses = [];
+        this.isFaceDetectionEnabled = false;
+        this.currentFaces = [];
+        this.isGPSMinimized = false;
 
         this.initializeElements();
         this.initializeEventListeners();
@@ -27,7 +31,6 @@ class PoliCameraApp {
         this.initializeUserId();
         this.initializeDatabase();
         this.initializeStitcher();
-        this.initializePointCloud();
         this.initializePullToRefresh();
         this.loadVersion();
 
@@ -49,10 +52,10 @@ class PoliCameraApp {
         this.captureFab = document.getElementById('captureFab');
         this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
+        this.poseFab = document.getElementById('poseFab');
+        this.faceFab = document.getElementById('faceFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
-        this.pointcloudBtn = document.getElementById('pointcloudBtn');
-
 
         // Location elements
         this.latitudeEl = document.getElementById('latitude');
@@ -75,6 +78,8 @@ class PoliCameraApp {
         this.gpsHeadingDisplayEl = document.getElementById('gpsHeadingDisplay');
         this.gpsNetworkDisplayEl = document.getElementById('gpsNetworkDisplay');
         this.gpsVersionDisplayEl = document.getElementById('gpsVersionDisplay');
+        this.gpsOverlay = document.getElementById('gpsOverlay');
+        this.gpsToggle = document.getElementById('gpsToggle');
 
         // WebVTT elements
         this.positionTrack = document.getElementById('positionTrack');
@@ -85,8 +90,13 @@ class PoliCameraApp {
         this.captureFab.addEventListener('click', () => this.capturePhoto());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
+        this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
+        this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
-        this.pointcloudBtn.addEventListener('click', () => this.generatePointCloud());
+        this.gpsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleGPSOverlay();
+        });
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -537,6 +547,8 @@ class PoliCameraApp {
 
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
+                this.poseFab.style.display = 'flex';
+                this.faceFab.style.display = 'flex';
             }
 
             // Show errors if any
@@ -671,6 +683,64 @@ class PoliCameraApp {
         qrCodeManager.showQRCode();
     }
 
+    async togglePoseEstimation() {
+        if (!window.poseEstimationManager) {
+            this.showError('Pose estimation not available');
+            return;
+        }
+
+        try {
+            const isEnabled = await poseEstimationManager.toggle();
+            this.isPoseEstimationEnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.poseFab.classList.add('active');
+                this.showToast('Pose estimation enabled', 'accessibility_new');
+            } else {
+                this.poseFab.classList.remove('active');
+                this.showToast('Pose estimation disabled', 'accessibility_new');
+            }
+        } catch (error) {
+            console.error('Failed to toggle pose estimation:', error);
+            this.showError('Failed to initialize pose estimation');
+        }
+    }
+
+    async toggleFaceDetection() {
+        if (!window.faceDetectionManager) {
+            this.showError('Face detection not available');
+            return;
+        }
+
+        try {
+            const isEnabled = await faceDetectionManager.toggle();
+            this.isFaceDetectionEnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.faceFab.classList.add('active');
+                this.showToast('Face detection enabled', 'face');
+            } else {
+                this.faceFab.classList.remove('active');
+                this.showToast('Face detection disabled', 'face');
+            }
+        } catch (error) {
+            console.error('Failed to toggle face detection:', error);
+            this.showError('Failed to initialize face detection');
+        }
+    }
+
+    toggleGPSOverlay() {
+        this.isGPSMinimized = !this.isGPSMinimized;
+
+        if (this.isGPSMinimized) {
+            this.gpsOverlay.classList.add('minimized');
+        } else {
+            this.gpsOverlay.classList.remove('minimized');
+        }
+    }
+
     pauseCamera() {
         if (this.video.srcObject) {
             this.video.pause();
@@ -711,6 +781,32 @@ class PoliCameraApp {
             }
         }
 
+        // Run pose estimation on the captured image
+        let poseData = null;
+        if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
+            try {
+                console.log('Running pose estimation on captured photo...');
+                const poses = await poseEstimationManager.detectPoses(canvas, false);
+                poseData = poseEstimationManager.exportPoseData(poses);
+                console.log('Pose estimation results:', poseData);
+            } catch (error) {
+                console.error('Pose estimation failed:', error);
+            }
+        }
+
+        // Run face detection on the captured image
+        let faceData = null;
+        if (this.isFaceDetectionEnabled && window.faceDetectionManager) {
+            try {
+                console.log('Running face detection on captured photo...');
+                const faces = await faceDetectionManager.detectFaces(canvas, false);
+                faceData = faceDetectionManager.exportFaceData(faces);
+                console.log('Face detection results:', faceData);
+            } catch (error) {
+                console.error('Face detection failed:', error);
+            }
+        }
+
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
@@ -720,7 +816,9 @@ class PoliCameraApp {
             location: this.getCurrentLocation(),
             orientation: this.getCurrentOrientation(),
             networkInfo: networkManager.getNetworkInfo(),
-            aiAnalysis: aiAnalysis
+            aiAnalysis: aiAnalysis,
+            poseData: poseData,
+            faceData: faceData
         };
 
         this.capturedPhotos.push(photo);
@@ -810,7 +908,6 @@ class PoliCameraApp {
                 photoElement.classList.add('selected');
             }
             this.updateStitchButton();
-            this.updatePointCloudButton();
         });
 
         img.addEventListener('click', () => {
@@ -908,7 +1005,75 @@ class PoliCameraApp {
             }
         }
 
-        details.innerHTML = basicInfo + aiInfo;
+        // Pose estimation section
+        let poseInfo = '';
+        if (photo.poseData) {
+            if (photo.poseData.poseCount > 0) {
+                poseInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🏃 Pose Estimation:</strong></div>
+                    <div style="margin-left: 16px;">
+                        <div><strong>People Detected:</strong> ${photo.poseData.poseCount}</div>
+                        <div style="margin-top: 8px;">
+                `;
+
+                photo.poseData.poses.forEach((pose, index) => {
+                    const keypointCount = pose.keypoints.length;
+                    poseInfo += `
+                        <div style="margin: 8px 0; padding: 8px; background: var(--md-sys-color-surface-variant); border-radius: 4px;">
+                            <strong>Person ${index + 1}</strong> (${Math.round(pose.score * 100)}% confidence)<br>
+                            <span style="font-size: 12px;">Keypoints detected: ${keypointCount}</span>
+                        </div>
+                    `;
+                });
+
+                poseInfo += `
+                        </div>
+                    </div>
+                `;
+            } else {
+                poseInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>🏃 Pose Estimation:</strong> No people detected</div>
+                `;
+            }
+        }
+
+        // Face detection section
+        let faceInfo = '';
+        if (photo.faceData) {
+            if (photo.faceData.faceCount > 0) {
+                faceInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>👤 Face Detection:</strong></div>
+                    <div style="margin-left: 16px;">
+                        <div><strong>Faces Detected:</strong> ${photo.faceData.faceCount}</div>
+                        <div style="margin-top: 8px;">
+                `;
+
+                photo.faceData.faces.forEach((face, index) => {
+                    const landmarkCount = face.landmarks.length;
+                    faceInfo += `
+                        <div style="margin: 8px 0; padding: 8px; background: var(--md-sys-color-surface-variant); border-radius: 4px;">
+                            <strong>Face ${index + 1}</strong> (${Math.round(face.score * 100)}% confidence)<br>
+                            <span style="font-size: 12px;">Landmarks detected: ${landmarkCount}</span>
+                        </div>
+                    `;
+                });
+
+                faceInfo += `
+                        </div>
+                    </div>
+                `;
+            } else {
+                faceInfo = `
+                    <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                    <div><strong>👤 Face Detection:</strong> No faces detected</div>
+                `;
+            }
+        }
+
+        details.innerHTML = basicInfo + aiInfo + poseInfo + faceInfo;
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
@@ -1241,6 +1406,20 @@ class PoliCameraApp {
             // Run optimized real-time detection directly on video element
             const detections = await aiRecognitionManager.detectObjects(this.video, true);
 
+            // Detect poses if enabled
+            if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
+                this.currentPoses = await poseEstimationManager.detectPoses(this.video, true);
+            } else {
+                this.currentPoses = [];
+            }
+
+            // Detect faces if enabled
+            if (this.isFaceDetectionEnabled && window.faceDetectionManager) {
+                this.currentFaces = await faceDetectionManager.detectFaces(this.video, true);
+            } else {
+                this.currentFaces = [];
+            }
+
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
@@ -1271,13 +1450,6 @@ class PoliCameraApp {
         // Clear previous detections
         ctx.clearRect(0, 0, this.detectionOverlay.width, this.detectionOverlay.height);
 
-        // Draw "AI Active" indicator in corner when no detections
-        if (detections.length === 0) {
-            this.drawAIActiveIndicator(ctx);
-            this.drawDetectionStats(ctx);
-            return;
-        }
-
         // Validate video dimensions
         if (!this.video.videoWidth || !this.video.videoHeight) return;
 
@@ -1285,6 +1457,13 @@ class PoliCameraApp {
         const videoRect = this.video.getBoundingClientRect();
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
+
+        // Draw "AI Active" indicator in corner when no detections, poses, or faces
+        if (detections.length === 0 && this.currentPoses.length === 0 && this.currentFaces.length === 0) {
+            this.drawAIActiveIndicator(ctx);
+            this.drawDetectionStats(ctx);
+            return;
+        }
 
         detections.forEach(detection => {
             const { bbox, class: className, confidence, trackId } = detection;
@@ -1377,6 +1556,18 @@ class PoliCameraApp {
             ctx.fillStyle = color;
             ctx.fillRect(barX, barY, barWidth * (confidence / 100), barHeight);
         });
+
+        // Draw poses if enabled
+        if (this.isPoseEstimationEnabled && this.currentPoses.length > 0 && window.poseEstimationManager) {
+            const scale = { x: scaleX, y: scaleY };
+            poseEstimationManager.drawPoses(ctx, this.currentPoses, scale);
+        }
+
+        // Draw faces if enabled
+        if (this.isFaceDetectionEnabled && this.currentFaces.length > 0 && window.faceDetectionManager) {
+            const scale = { x: scaleX, y: scaleY };
+            faceDetectionManager.drawFaces(ctx, this.currentFaces, scale);
+        }
 
         // Draw detection statistics overlay
         this.drawDetectionStats(ctx);
@@ -1548,14 +1739,48 @@ class PoliCameraApp {
         }, 4000);
     }
 
+    showToast(message, icon = null) {
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            padding: 12px 24px;
+            border-radius: 24px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: var(--md-sys-elevation-level2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+
+        if (icon) {
+            const iconEl = document.createElement('span');
+            iconEl.className = 'material-icons';
+            iconEl.style.fontSize = '20px';
+            iconEl.textContent = icon;
+            toast.appendChild(iconEl);
+        }
+
+        const textEl = document.createElement('span');
+        textEl.textContent = message;
+        toast.appendChild(textEl);
+
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 2000);
+    }
+
     initializeStitcher() {
         this.imageStitcher = new ImageStitcher();
         this.updateStitchButton();
-    }
-
-    initializePointCloud() {
-        this.pointCloudGenerator = new PointCloudE57();
-        this.updatePointCloudButton();
     }
 
     updateStitchButton() {
@@ -1564,15 +1789,6 @@ class PoliCameraApp {
             this.stitchBtn.innerHTML = this.selectedPhotos.size < 2
                 ? '<span class="material-icons">collections</span> Select 2+ Photos'
                 : `<span class="material-icons">collections</span> Stitch ${this.selectedPhotos.size} Photos`;
-        }
-    }
-
-    updatePointCloudButton() {
-        if (this.pointcloudBtn) {
-            this.pointcloudBtn.disabled = this.selectedPhotos.size < 2;
-            this.pointcloudBtn.innerHTML = this.selectedPhotos.size < 2
-                ? '<span class="material-icons">3d_rotation</span> Select 2+ Photos'
-                : `<span class="material-icons">3d_rotation</span> Generate from ${this.selectedPhotos.size} Photos`;
         }
     }
 
@@ -1635,7 +1851,6 @@ class PoliCameraApp {
             photoItem.classList.remove('selected');
         });
         this.updateStitchButton();
-        this.updatePointCloudButton();
     }
 
     showStitchSuccess(stitchedPhoto) {
@@ -1672,404 +1887,6 @@ class PoliCameraApp {
         }, 5000);
     }
 
-    async generatePointCloud() {
-        if (this.selectedPhotos.size < 2) {
-            this.showError('Please select at least 2 photos to generate point cloud');
-            return;
-        }
-
-        try {
-            this.pointcloudBtn.disabled = true;
-            this.pointcloudBtn.innerHTML = '<span class="material-icons">3d_rotation</span> Generating...';
-
-            const photoArray = Array.from(this.selectedPhotos);
-
-            // Clear existing point cloud
-            this.pointCloudGenerator.clear();
-
-            // Add metadata
-            this.pointCloudGenerator.metadata.description = `Point cloud generated from ${photoArray.length} photos captured by PoliCamera`;
-
-            let totalPoints = 0;
-
-            // Process each photo to extract 3D points
-            for (let i = 0; i < photoArray.length; i++) {
-                const photo = photoArray[i];
-                const scanIndex = this.pointCloudGenerator.addScanPosition(
-                    this.extractPhotoPosition(photo),
-                    this.extractPhotoRotation(photo),
-                    `Photo_${i + 1}_${new Date(photo.timestamp).toISOString().slice(0, 19)}`
-                );
-
-                // Add associated image
-                this.pointCloudGenerator.addImage(
-                    `photo_${i + 1}.jpg`,
-                    photo.dataUrl,
-                    {
-                        position: this.extractPhotoPosition(photo),
-                        rotation: this.extractPhotoRotation(photo)
-                    },
-                    this.extractCameraIntrinsics(photo)
-                );
-
-                // Generate points from photo using different techniques
-                const points = await this.extractPointsFromPhoto(photo, scanIndex, i);
-                totalPoints += points;
-
-                // Update progress
-                const progress = Math.round(((i + 1) / photoArray.length) * 100);
-                this.pointcloudBtn.innerHTML = `<span class="material-icons">3d_rotation</span> Processing ${progress}%`;
-            }
-
-            // Add some synthetic points for demonstration if few points were extracted
-            if (totalPoints < 100) {
-                this.addSyntheticPointsFromPhotos(photoArray);
-            }
-
-            // Generate E57 file
-            const e57Data = this.pointCloudGenerator.exportToE57('photos_pointcloud.e57');
-
-            // Show success and offer download
-            this.showPointCloudSuccess(e57Data);
-
-            // Log statistics
-            console.log('Point Cloud Generation Complete:', this.pointCloudGenerator.getStatistics());
-
-        } catch (error) {
-            console.error('Point cloud generation failed:', error);
-            this.showError('Failed to generate point cloud: ' + error.message);
-        } finally {
-            this.pointcloudBtn.disabled = false;
-            this.updatePointCloudButton();
-        }
-    }
-
-    extractPhotoPosition(photo) {
-        // Extract GPS coordinates if available
-        if (photo.location && photo.location.latitude !== '--' && photo.location.longitude !== '--') {
-            return {
-                x: parseFloat(photo.location.longitude) * 111320, // Rough conversion to meters
-                y: parseFloat(photo.location.latitude) * 111320,
-                z: parseFloat(photo.location.altitude) || 0
-            };
-        }
-
-        // Fallback to estimated position based on photo index
-        const photoArray = Array.from(this.selectedPhotos);
-        const index = photoArray.findIndex(p => p.id === photo.id);
-        return {
-            x: index * 2.0, // 2 meters apart
-            y: 0,
-            z: 1.6 // Average camera height
-        };
-    }
-
-    extractPhotoRotation(photo) {
-        // Extract device orientation if available
-        if (photo.orientation) {
-            // Convert device orientation to quaternion
-            const { alpha, beta, gamma } = photo.orientation;
-            return this.eulerToQuaternion(
-                (alpha || 0) * Math.PI / 180,
-                (beta || 0) * Math.PI / 180,
-                (gamma || 0) * Math.PI / 180
-            );
-        }
-
-        // Default rotation (facing forward)
-        return { x: 0, y: 0, z: 0, w: 1 };
-    }
-
-    extractCameraIntrinsics(photo) {
-        // Estimate camera intrinsics based on image size and typical mobile camera properties
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        return new Promise((resolve) => {
-            img.onload = () => {
-                const width = img.naturalWidth || 1920;
-                const height = img.naturalHeight || 1080;
-
-                // Typical mobile camera FOV: ~70 degrees horizontal
-                const fovHorizontal = 70 * Math.PI / 180;
-                const focalLengthX = width / (2 * Math.tan(fovHorizontal / 2));
-                const focalLengthY = focalLengthX; // Assume square pixels
-
-                resolve({
-                    focalLengthX: focalLengthX,
-                    focalLengthY: focalLengthY,
-                    principalPointX: width / 2,
-                    principalPointY: height / 2,
-                    imageWidth: width,
-                    imageHeight: height
-                });
-            };
-            img.src = photo.dataUrl;
-        });
-    }
-
-    async extractPointsFromPhoto(photo, scanIndex, photoIndex) {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        return new Promise((resolve) => {
-            img.onload = () => {
-                canvas.width = Math.min(img.naturalWidth, 640); // Limit size for performance
-                canvas.height = Math.min(img.naturalHeight, 480);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                let pointsAdded = 0;
-
-                // Extract points using different methods
-                pointsAdded += this.extractPointsFromGradients(imageData, scanIndex, photoIndex);
-                pointsAdded += this.extractPointsFromCorners(imageData, scanIndex, photoIndex);
-                pointsAdded += this.extractPointsFromEdges(imageData, scanIndex, photoIndex);
-
-                resolve(pointsAdded);
-            };
-
-            img.onerror = () => resolve(0);
-            img.src = photo.dataUrl;
-        });
-    }
-
-    extractPointsFromGradients(imageData, scanIndex, photoIndex) {
-        const { width, height, data } = imageData;
-        let pointsAdded = 0;
-        const baseDepth = 5.0 + photoIndex * 0.5; // Estimated depth
-
-        // Sample points based on intensity gradients
-        const step = 8; // Sample every 8th pixel for performance
-
-        for (let y = step; y < height - step; y += step) {
-            for (let x = step; x < width - step; x += step) {
-                const idx = (y * width + x) * 4;
-
-                // Calculate gradient magnitude
-                const rightIdx = (y * width + x + step) * 4;
-                const bottomIdx = ((y + step) * width + x) * 4;
-
-                if (rightIdx < data.length && bottomIdx < data.length) {
-                    const gx = (data[rightIdx] - data[idx]) / 255.0;
-                    const gy = (data[bottomIdx] - data[idx]) / 255.0;
-                    const gradientMag = Math.sqrt(gx * gx + gy * gy);
-
-                    // Add points at locations with significant gradients
-                    if (gradientMag > 0.1) {
-                        const worldX = (x - width / 2) * baseDepth / (width / 2);
-                        const worldY = (height / 2 - y) * baseDepth / (height / 2);
-                        const worldZ = baseDepth + (gradientMag - 0.5) * 0.5; // Depth variation
-
-                        const intensity = gradientMag;
-                        const color = {
-                            r: data[idx],
-                            g: data[idx + 1],
-                            b: data[idx + 2]
-                        };
-
-                        this.pointCloudGenerator.addPoint(worldX, worldY, worldZ, intensity, color, scanIndex);
-                        pointsAdded++;
-                    }
-                }
-            }
-        }
-
-        return pointsAdded;
-    }
-
-    extractPointsFromCorners(imageData, scanIndex, photoIndex) {
-        const { width, height, data } = imageData;
-        let pointsAdded = 0;
-        const baseDepth = 5.0 + photoIndex * 0.5;
-
-        // Simple corner detection using intensity differences
-        const step = 16;
-
-        for (let y = step; y < height - step; y += step) {
-            for (let x = step; x < width - step; x += step) {
-                const centerIdx = (y * width + x) * 4;
-                const centerIntensity = (data[centerIdx] + data[centerIdx + 1] + data[centerIdx + 2]) / 3;
-
-                // Check 8 surrounding points
-                let cornerScore = 0;
-                const offsets = [
-                    [-step, -step], [0, -step], [step, -step],
-                    [-step, 0],                  [step, 0],
-                    [-step, step],  [0, step],  [step, step]
-                ];
-
-                for (const [dx, dy] of offsets) {
-                    const checkX = x + dx;
-                    const checkY = y + dy;
-
-                    if (checkX >= 0 && checkX < width && checkY >= 0 && checkY < height) {
-                        const checkIdx = (checkY * width + checkX) * 4;
-                        const checkIntensity = (data[checkIdx] + data[checkIdx + 1] + data[checkIdx + 2]) / 3;
-                        cornerScore += Math.abs(centerIntensity - checkIntensity);
-                    }
-                }
-
-                // Add point if it's a strong corner
-                if (cornerScore > 200) {
-                    const worldX = (x - width / 2) * baseDepth / (width / 2);
-                    const worldY = (height / 2 - y) * baseDepth / (height / 2);
-                    const worldZ = baseDepth + (cornerScore / 1000);
-
-                    const intensity = Math.min(1.0, cornerScore / 500);
-                    const color = {
-                        r: data[centerIdx],
-                        g: data[centerIdx + 1],
-                        b: data[centerIdx + 2]
-                    };
-
-                    this.pointCloudGenerator.addPoint(worldX, worldY, worldZ, intensity, color, scanIndex);
-                    pointsAdded++;
-                }
-            }
-        }
-
-        return pointsAdded;
-    }
-
-    extractPointsFromEdges(imageData, scanIndex, photoIndex) {
-        const { width, height, data } = imageData;
-        let pointsAdded = 0;
-        const baseDepth = 5.0 + photoIndex * 0.5;
-
-        // Simple edge detection using Sobel-like operator
-        const step = 12;
-
-        for (let y = step; y < height - step; y += step) {
-            for (let x = step; x < width - step; x += step) {
-                const centerIdx = (y * width + x) * 4;
-
-                // Calculate edge strength
-                const leftIdx = (y * width + x - step) * 4;
-                const rightIdx = (y * width + x + step) * 4;
-                const topIdx = ((y - step) * width + x) * 4;
-                const bottomIdx = ((y + step) * width + x) * 4;
-
-                if (leftIdx >= 0 && rightIdx < data.length && topIdx >= 0 && bottomIdx < data.length) {
-                    const gx = (data[rightIdx] - data[leftIdx]) / 255.0;
-                    const gy = (data[bottomIdx] - data[topIdx]) / 255.0;
-                    const edgeStrength = Math.sqrt(gx * gx + gy * gy);
-
-                    if (edgeStrength > 0.2) {
-                        const worldX = (x - width / 2) * baseDepth / (width / 2);
-                        const worldY = (height / 2 - y) * baseDepth / (height / 2);
-                        const worldZ = baseDepth + Math.sin(x * 0.01) * 0.3; // Add some variation
-
-                        const intensity = edgeStrength;
-                        const color = {
-                            r: data[centerIdx],
-                            g: data[centerIdx + 1],
-                            b: data[centerIdx + 2]
-                        };
-
-                        this.pointCloudGenerator.addPoint(worldX, worldY, worldZ, intensity, color, scanIndex);
-                        pointsAdded++;
-                    }
-                }
-            }
-        }
-
-        return pointsAdded;
-    }
-
-    addSyntheticPointsFromPhotos(photoArray) {
-        // Add synthetic points to ensure a meaningful point cloud
-        const scanIndex = this.pointCloudGenerator.addScanPosition(
-            { x: 0, y: 0, z: 2 },
-            { x: 0, y: 0, z: 0, w: 1 },
-            'Synthetic_Fill'
-        );
-
-        // Create a basic structure representing the camera positions and scene
-        for (let i = 0; i < photoArray.length; i++) {
-            const baseX = i * 2.0;
-
-            // Add points representing the photo positions
-            for (let j = 0; j < 50; j++) {
-                const x = baseX + (Math.random() - 0.5) * 2;
-                const y = (Math.random() - 0.5) * 4;
-                const z = Math.random() * 3 + 1;
-
-                const intensity = Math.random();
-                const color = {
-                    r: Math.floor(Math.random() * 256),
-                    g: Math.floor(Math.random() * 256),
-                    b: Math.floor(Math.random() * 256)
-                };
-
-                this.pointCloudGenerator.addPoint(x, y, z, intensity, color, scanIndex);
-            }
-        }
-    }
-
-    eulerToQuaternion(yaw, pitch, roll) {
-        const cy = Math.cos(yaw * 0.5);
-        const sy = Math.sin(yaw * 0.5);
-        const cp = Math.cos(pitch * 0.5);
-        const sp = Math.sin(pitch * 0.5);
-        const cr = Math.cos(roll * 0.5);
-        const sr = Math.sin(roll * 0.5);
-
-        return {
-            w: cr * cp * cy + sr * sp * sy,
-            x: sr * cp * cy - cr * sp * sy,
-            y: cr * sp * cy + sr * cp * sy,
-            z: cr * cp * sy - sr * sp * cy
-        };
-    }
-
-    showPointCloudSuccess(e57Data) {
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--md-sys-color-secondary);
-            color: var(--md-sys-color-on-secondary);
-            padding: 16px 24px;
-            border-radius: 24px;
-            z-index: 10000;
-            font-size: 14px;
-            box-shadow: var(--md-sys-elevation-level2);
-            cursor: pointer;
-            max-width: 80%;
-            text-align: center;
-        `;
-
-        toast.innerHTML = `
-            <div style="margin-bottom: 8px;">
-                <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">3d_rotation</span>
-                Point Cloud Generated!
-            </div>
-            <div style="font-size: 12px; opacity: 0.8;">
-                ${e57Data.metadata.pointCount} points • ${e57Data.metadata.scanCount} scans
-            </div>
-            <div style="font-size: 12px; margin-top: 8px;">
-                Tap to download E57 file
-            </div>
-        `;
-
-        toast.addEventListener('click', () => {
-            this.pointCloudGenerator.downloadE57(e57Data.filename);
-            document.body.removeChild(toast);
-        });
-
-        document.body.appendChild(toast);
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 8000);
-    }
-
     cleanup() {
         // Cleanup method for proper resource management
         if (this.currentVTTUrl) {
@@ -2090,6 +1907,14 @@ class PoliCameraApp {
         // Cleanup AI worker
         if (window.aiRecognitionManager) {
             aiRecognitionManager.cleanup();
+        }
+        // Cleanup pose estimation
+        if (window.poseEstimationManager) {
+            poseEstimationManager.cleanup();
+        }
+        // Cleanup face detection
+        if (window.faceDetectionManager) {
+            faceDetectionManager.cleanup();
         }
     }
 }

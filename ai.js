@@ -15,9 +15,9 @@ class AIRecognitionManager {
         this.workerFailureCount = 0;
         this.maxWorkerFailures = 3;
 
-        // Performance optimization settings
-        this.inputSize = 320; // Reduced from default 416 for faster processing
-        this.maxFPS = 30;
+        // Performance optimization settings - Optimized for maximum speed
+        this.inputSize = 256; // Reduced for faster processing
+        this.maxFPS = 60; // Higher FPS target for smoother detection
         this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
@@ -42,9 +42,9 @@ class AIRecognitionManager {
         this.nmsIoUThreshold = 0.5;
         this.enableNMS = true;
 
-        // Temporal smoothing settings
-        this.smoothingAlpha = 0.6; // Higher = more responsive, lower = smoother
-        this.enableSmoothing = true;
+        // Temporal smoothing settings - Optimized for speed
+        this.smoothingAlpha = 0.8; // Higher = more responsive, lower = smoother
+        this.enableSmoothing = true; // Keep enabled for stability
 
         // Detection statistics
         this.detectionStats = {
@@ -1159,26 +1159,26 @@ class AIRecognitionManager {
         const isMediumPerformance = cores >= 4 && hasWebGL;
 
         if (isHighPerformance) {
-            // High-end device: more frequent processing, higher quality
+            // High-end device: optimized for maximum speed
             this.skipFrames = 0; // Process every frame
-            this.inputSize = 416; // Higher resolution
+            this.inputSize = 320; // Reduced for faster processing
             this.maxDetections = 20;
-            this.detectionThreshold = 0.25; // Lower threshold for more detections
-            console.log('High performance mode enabled - continuous detection');
+            this.detectionThreshold = 0.3; // Balanced threshold
+            console.log('High performance mode enabled - speed optimized');
         } else if (isMediumPerformance) {
-            // Medium device: balanced settings
+            // Medium device: balanced speed and quality
             this.skipFrames = 0; // Process every frame
-            this.inputSize = 320; // Medium resolution
+            this.inputSize = 256; // Reduced for faster processing
             this.maxDetections = 15;
-            this.detectionThreshold = 0.35; // Lower threshold for more detections
-            console.log('Medium performance mode enabled - continuous detection');
+            this.detectionThreshold = 0.35;
+            console.log('Medium performance mode enabled - speed optimized');
         } else {
-            // Low-end device: still continuous but optimized
-            this.skipFrames = 1; // Process every 2nd frame minimum
-            this.inputSize = 224; // Lower resolution
+            // Low-end device: maximum speed optimization
+            this.skipFrames = 0; // Process every frame (reduced input size compensates)
+            this.inputSize = 192; // Smaller for faster processing
             this.maxDetections = 10;
-            this.detectionThreshold = 0.45; // Lower threshold for more detections
-            console.log('Low performance mode enabled - continuous detection');
+            this.detectionThreshold = 0.4;
+            console.log('Low performance mode enabled - speed optimized');
         }
 
         // Cleanup
