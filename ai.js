@@ -5,19 +5,19 @@
 class AIRecognitionManager {
     constructor() {
         this.worker = null;
-        this.isWorkerSupported = typeof Worker !== 'undefined';
+        this.isWorkerSupported = false; // Disabled for YOLOv8 ONNX Runtime
         this.isModelLoaded = false;
         this.isLoading = false;
         this.messageId = 0;
         this.pendingMessages = new Map();
-        this.detectionThreshold = 0.4;
-        this.maxDetections = 10;
+        this.detectionThreshold = 0.3; // Lower for better detection
+        this.maxDetections = 20; // More detections with faster YOLOv8
         this.workerFailureCount = 0;
         this.maxWorkerFailures = 3;
 
-        // Performance optimization settings - Optimized for maximum speed
-        this.inputSize = 256; // Reduced for faster processing
-        this.maxFPS = 60; // Higher FPS target for smoother detection
+        // Performance optimization settings - Optimized for YOLOv8
+        this.inputSize = 480; // Balanced for YOLOv8 speed/accuracy (full is 640)
+        this.maxFPS = 30; // 30 FPS for real-time performance
         this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
@@ -38,18 +38,18 @@ class AIRecognitionManager {
         this.minDetectionFrames = 1; // Show objects immediately for continuous display
         this.maxMissingFrames = 3; // Shorter persistence to reduce false tracking
 
-        // NMS settings
+        // NMS settings (disabled for YOLOv8 - it has built-in NMS)
         this.nmsIoUThreshold = 0.5;
-        this.enableNMS = true;
+        this.enableNMS = false;
 
-        // Temporal smoothing settings - Optimized for speed
-        this.smoothingAlpha = 0.7; // Higher = more responsive, lower = smoother
+        // Temporal smoothing settings - Optimized for YOLOv8 speed
+        this.smoothingAlpha = 0.9; // Very responsive with fast YOLOv8
         this.enableSmoothing = true; // Keep enabled for stability
 
         // Velocity-based tracking for better following
         this.enableVelocityTracking = true;
-        this.velocitySmoothing = 0.6; // Smoothing factor for velocity
-        this.predictionWeight = 0.3; // How much to trust velocity prediction
+        this.velocitySmoothing = 0.8; // High smoothing for stable velocity
+        this.predictionWeight = 0.3; // Moderate prediction trust
 
         // Detection statistics
         this.detectionStats = {
@@ -180,24 +180,27 @@ class AIRecognitionManager {
      */
     async initializeModelMainThread() {
         try {
-            // Check if TensorFlow.js is available
-            if (typeof tf === 'undefined') {
-                throw new Error('TensorFlow.js not loaded');
+            // Check if YOLOv8 detector is available
+            if (typeof yolov8Detector === 'undefined') {
+                throw new Error('YOLOv8 detector not loaded');
             }
 
-            // Check if COCO-SSD model is available
-            if (typeof cocoSsd === 'undefined') {
-                throw new Error('COCO-SSD model not loaded');
+            // Set input size for YOLOv8
+            yolov8Detector.setInputSize(this.inputSize);
+
+            // Load the YOLOv8 model
+            const success = await yolov8Detector.loadModel();
+            if (!success) {
+                throw new Error('Failed to load YOLOv8 model');
             }
 
-            // Load the model
-            this.model = await cocoSsd.load();
+            this.model = yolov8Detector;
             this.isModelLoaded = true;
-            console.log('AI model loaded successfully (main thread)');
+            console.log('✅ YOLOv8 model loaded successfully (main thread)');
 
             return true;
         } catch (error) {
-            console.error('Failed to load AI model on main thread:', error);
+            console.error('❌ Failed to load YOLOv8 model on main thread:', error);
             return false;
         }
     }
@@ -430,25 +433,16 @@ class AIRecognitionManager {
             }
 
             if (!isRealTime) {
-                console.log('Running object detection (main thread)...');
+                console.log('Running YOLOv8 detection (main thread)...');
             }
 
+            // YOLOv8 returns detections in our standard format already
             const predictions = await this.model.detect(processElement);
 
-            // Filter predictions by confidence threshold
+            // Filter by confidence and limit detections
             let filteredPredictions = predictions
-                .filter(prediction => prediction.score >= this.detectionThreshold)
-                .slice(0, this.maxDetections)
-                .map(prediction => ({
-                    class: prediction.class,
-                    confidence: Math.round(prediction.score * 100),
-                    bbox: {
-                        x: Math.round(prediction.bbox[0]),
-                        y: Math.round(prediction.bbox[1]),
-                        width: Math.round(prediction.bbox[2]),
-                        height: Math.round(prediction.bbox[3])
-                    }
-                }));
+                .filter(prediction => prediction.confidence >= this.detectionThreshold * 100)
+                .slice(0, this.maxDetections);
 
             // Scale bounding boxes back if we downscaled
             if (isRealTime && canvas && processElement === canvas) {
