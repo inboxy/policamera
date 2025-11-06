@@ -374,4 +374,4 @@ class FaceDetectionManager {
 }
 
 // Create global instance
-const faceDetectionManager = new FaceDetectionManager();
+window.faceDetectionManager = new FaceDetectionManager();

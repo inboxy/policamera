@@ -15,9 +15,9 @@ class AIRecognitionManager {
         this.workerFailureCount = 0;
         this.maxWorkerFailures = 3;
 
-        // Performance optimization settings - Optimized for YOLOv8
-        this.inputSize = 480; // Balanced for YOLOv8 speed/accuracy (full is 640)
-        this.maxFPS = 30; // 30 FPS for real-time performance
+        // Performance optimization settings - Optimized for maximum speed
+        this.inputSize = 224; // Reduced for faster processing (with monochrome)
+        this.maxFPS = 30; // 30 FPS for balanced performance
         this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
@@ -34,22 +34,24 @@ class AIRecognitionManager {
         // Object tracking and smoothing
         this.trackedObjects = [];
         this.objectIdCounter = 0;
-        this.trackingIoUThreshold = 0.3;
+        this.trackingIoUThreshold = 0.4; // Higher threshold for more confident matching
         this.minDetectionFrames = 1; // Show objects immediately for continuous display
-        this.maxMissingFrames = 3; // Shorter persistence to reduce false tracking
+        this.maxMissingFrames = 5; // Longer persistence to maintain tracking through brief occlusions
 
         // NMS settings (disabled for YOLOv8 - it has built-in NMS)
         this.nmsIoUThreshold = 0.5;
         this.enableNMS = false;
 
-        // Temporal smoothing settings - Optimized for YOLOv8 speed
-        this.smoothingAlpha = 0.9; // Very responsive with fast YOLOv8
+        // Temporal smoothing settings - Optimized for sticky tracking
+        this.smoothingAlpha = 0.75; // Higher = more responsive, lower = smoother
         this.enableSmoothing = true; // Keep enabled for stability
+        this.adaptiveSmoothing = true; // Adjust smoothing based on motion speed
 
         // Velocity-based tracking for better following
         this.enableVelocityTracking = true;
-        this.velocitySmoothing = 0.8; // High smoothing for stable velocity
-        this.predictionWeight = 0.3; // Moderate prediction trust
+        this.velocitySmoothing = 0.7; // Higher smoothing for more stable velocity
+        this.predictionWeight = 0.5; // Increased trust in velocity prediction for better sticking
+        this.maxVelocity = 500; // Maximum velocity (pixels per second) to prevent jumps
 
         // Detection statistics
         this.detectionStats = {
@@ -275,6 +277,28 @@ class AIRecognitionManager {
     }
 
     /**
+     * Convert canvas to monochrome for faster processing
+     * Reduces data by ~66% (3 color channels to 1)
+     */
+    convertToMonochrome(ctx, width, height) {
+        if (!this.useMonochrome) return;
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+
+        // Convert to grayscale using luminosity method
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            data[i] = gray;     // R
+            data[i + 1] = gray; // G
+            data[i + 2] = gray; // B
+            // data[i + 3] is alpha, keep unchanged
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    /**
      * Detect objects using Web Worker
      */
     async detectObjectsWorker(imageElement, isRealTime = false) {
@@ -322,6 +346,9 @@ class AIRecognitionManager {
             } else {
                 ctx.drawImage(imageElement, 0, 0);
             }
+
+            // Convert to monochrome for faster processing
+            this.convertToMonochrome(ctx, width, height);
 
             // Get image data
             const imageData = ctx.getImageData(0, 0, width, height);
@@ -428,6 +455,10 @@ class AIRecognitionManager {
                     canvas.width = width;
                     canvas.height = height;
                     ctx.drawImage(imageElement, 0, 0, width, height);
+
+                    // Convert to monochrome for faster processing
+                    this.convertToMonochrome(ctx, width, height);
+
                     processElement = canvas;
                 }
             }
@@ -945,7 +976,7 @@ class AIRecognitionManager {
     /**
      * Smooth bounding box using exponential moving average
      */
-    smoothBoundingBox(newBox, oldBox, velocity = null, deltaTime = 1) {
+    smoothBoundingBox(newBox, oldBox, velocity = null, deltaTime = 1, motionMagnitude = 0) {
         if (!this.enableSmoothing || !oldBox || !newBox) {
             return newBox;
         }
@@ -955,7 +986,15 @@ class AIRecognitionManager {
             return newBox;
         }
 
-        const alpha = this.smoothingAlpha;
+        // Adaptive alpha based on motion speed - faster objects need more responsive tracking
+        let alpha = this.smoothingAlpha;
+        if (this.adaptiveSmoothing && motionMagnitude > 0) {
+            // Scale alpha up for faster motion (0-100 pixels/sec -> 0.75-0.95)
+            const motionFactor = Math.min(motionMagnitude / 100, 1.0);
+            alpha = this.smoothingAlpha + (0.2 * motionFactor); // Increase up to 0.95 for fast motion
+            alpha = Math.min(0.95, alpha);
+        }
+
         let smoothed;
 
         // Use velocity-based prediction if enabled and velocity is provided
@@ -1002,11 +1041,20 @@ class AIRecognitionManager {
         }
 
         // Calculate instantaneous velocity
-        const instantVelocity = {
+        let instantVelocity = {
             x: (newBox.x - tracked.bbox.x) / deltaTime,
             y: (newBox.y - tracked.bbox.y) / deltaTime,
             width: (newBox.width - tracked.bbox.width) / deltaTime,
             height: (newBox.height - tracked.bbox.height) / deltaTime
+        };
+
+        // Clamp velocity to prevent unrealistic jumps (likely detection errors)
+        const clamp = (val, max) => Math.max(-max, Math.min(max, val));
+        instantVelocity = {
+            x: clamp(instantVelocity.x, this.maxVelocity),
+            y: clamp(instantVelocity.y, this.maxVelocity),
+            width: clamp(instantVelocity.width, this.maxVelocity),
+            height: clamp(instantVelocity.height, this.maxVelocity)
         };
 
         // Smooth velocity using exponential moving average
@@ -1017,6 +1065,12 @@ class AIRecognitionManager {
             width: vAlpha * instantVelocity.width + (1 - vAlpha) * tracked.velocity.width,
             height: vAlpha * instantVelocity.height + (1 - vAlpha) * tracked.velocity.height
         };
+
+        // Store motion magnitude for adaptive smoothing
+        tracked.motionMagnitude = Math.sqrt(
+            tracked.velocity.x * tracked.velocity.x +
+            tracked.velocity.y * tracked.velocity.y
+        );
     }
 
     /**
@@ -1073,7 +1127,14 @@ class AIRecognitionManager {
                 this.updateVelocity(tracked, bestMatch.bbox, deltaTime);
 
                 // Update tracked object with velocity-based smoothed bounding box
-                tracked.bbox = this.smoothBoundingBox(bestMatch.bbox, tracked.bbox, tracked.velocity, deltaTime);
+                // Pass motion magnitude for adaptive smoothing
+                tracked.bbox = this.smoothBoundingBox(
+                    bestMatch.bbox,
+                    tracked.bbox,
+                    tracked.velocity,
+                    deltaTime,
+                    tracked.motionMagnitude || 0
+                );
                 tracked.confidence = bestMatch.confidence;
                 tracked.framesSeen++;
                 tracked.missingFrames = 0;
@@ -1109,6 +1170,7 @@ class AIRecognitionManager {
                 framesSeen: 1,
                 missingFrames: 0,
                 velocity: { x: 0, y: 0, width: 0, height: 0 }, // Track velocity for prediction
+                motionMagnitude: 0, // Motion speed for adaptive smoothing
                 lastUpdateTime: performance.now()
             });
 
