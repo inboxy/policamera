@@ -16,8 +16,8 @@ class AIRecognitionManager {
         this.maxWorkerFailures = 3;
 
         // Performance optimization settings - Optimized for maximum speed
-        this.inputSize = 256; // Reduced for faster processing
-        this.maxFPS = 60; // Higher FPS target for smoother detection
+        this.inputSize = 224; // Reduced for faster processing (with monochrome)
+        this.maxFPS = 30; // 30 FPS for balanced performance
         this.skipFrames = 0; // Process every frame for continuous detection
         this.frameCounter = 0;
         this.lastProcessTime = 0;
@@ -42,14 +42,18 @@ class AIRecognitionManager {
         this.nmsIoUThreshold = 0.5;
         this.enableNMS = true;
 
-        // Temporal smoothing settings - Optimized for speed
-        this.smoothingAlpha = 0.7; // Higher = more responsive, lower = smoother
+        // Temporal smoothing settings - Optimized for low lag
+        this.smoothingAlpha = 0.85; // Higher = more responsive, lower = smoother
         this.enableSmoothing = true; // Keep enabled for stability
 
         // Velocity-based tracking for better following
         this.enableVelocityTracking = true;
-        this.velocitySmoothing = 0.6; // Smoothing factor for velocity
-        this.predictionWeight = 0.3; // How much to trust velocity prediction
+        this.velocitySmoothing = 0.75; // Smoothing factor for velocity
+        this.predictionWeight = 0.4; // How much to trust velocity prediction
+
+        // Speed optimization
+        this.useMonochrome = true; // Convert to grayscale for faster processing
+        this.monochromeCanvas = null;
 
         // Detection statistics
         this.detectionStats = {
@@ -272,6 +276,28 @@ class AIRecognitionManager {
     }
 
     /**
+     * Convert canvas to monochrome for faster processing
+     * Reduces data by ~66% (3 color channels to 1)
+     */
+    convertToMonochrome(ctx, width, height) {
+        if (!this.useMonochrome) return;
+
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+
+        // Convert to grayscale using luminosity method
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            data[i] = gray;     // R
+            data[i + 1] = gray; // G
+            data[i + 2] = gray; // B
+            // data[i + 3] is alpha, keep unchanged
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    /**
      * Detect objects using Web Worker
      */
     async detectObjectsWorker(imageElement, isRealTime = false) {
@@ -319,6 +345,9 @@ class AIRecognitionManager {
             } else {
                 ctx.drawImage(imageElement, 0, 0);
             }
+
+            // Convert to monochrome for faster processing
+            this.convertToMonochrome(ctx, width, height);
 
             // Get image data
             const imageData = ctx.getImageData(0, 0, width, height);
@@ -425,6 +454,10 @@ class AIRecognitionManager {
                     canvas.width = width;
                     canvas.height = height;
                     ctx.drawImage(imageElement, 0, 0, width, height);
+
+                    // Convert to monochrome for faster processing
+                    this.convertToMonochrome(ctx, width, height);
+
                     processElement = canvas;
                 }
             }

@@ -373,4 +373,4 @@ class PoseEstimationManager {
 }
 
 // Create global instance
-const poseEstimationManager = new PoseEstimationManager();
+window.poseEstimationManager = new PoseEstimationManager();
