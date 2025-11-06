@@ -43,8 +43,13 @@ class AIRecognitionManager {
         this.enableNMS = true;
 
         // Temporal smoothing settings - Optimized for speed
-        this.smoothingAlpha = 0.8; // Higher = more responsive, lower = smoother
+        this.smoothingAlpha = 0.7; // Higher = more responsive, lower = smoother
         this.enableSmoothing = true; // Keep enabled for stability
+
+        // Velocity-based tracking for better following
+        this.enableVelocityTracking = true;
+        this.velocitySmoothing = 0.6; // Smoothing factor for velocity
+        this.predictionWeight = 0.3; // How much to trust velocity prediction
 
         // Detection statistics
         this.detectionStats = {
@@ -946,7 +951,7 @@ class AIRecognitionManager {
     /**
      * Smooth bounding box using exponential moving average
      */
-    smoothBoundingBox(newBox, oldBox) {
+    smoothBoundingBox(newBox, oldBox, velocity = null, deltaTime = 1) {
         if (!this.enableSmoothing || !oldBox || !newBox) {
             return newBox;
         }
@@ -957,18 +962,67 @@ class AIRecognitionManager {
         }
 
         const alpha = this.smoothingAlpha;
-        const smoothed = {
-            x: Math.round(alpha * newBox.x + (1 - alpha) * oldBox.x),
-            y: Math.round(alpha * newBox.y + (1 - alpha) * oldBox.y),
-            width: Math.round(alpha * newBox.width + (1 - alpha) * oldBox.width),
-            height: Math.round(alpha * newBox.height + (1 - alpha) * oldBox.height)
-        };
+        let smoothed;
+
+        // Use velocity-based prediction if enabled and velocity is provided
+        if (this.enableVelocityTracking && velocity) {
+            // Predict where the object should be based on velocity
+            const predicted = {
+                x: oldBox.x + velocity.x * deltaTime,
+                y: oldBox.y + velocity.y * deltaTime,
+                width: oldBox.width + velocity.width * deltaTime,
+                height: oldBox.height + velocity.height * deltaTime
+            };
+
+            // Blend between new detection, old position, and prediction
+            const beta = this.predictionWeight; // How much to trust prediction
+            smoothed = {
+                x: Math.round(alpha * newBox.x + (1 - alpha) * (beta * predicted.x + (1 - beta) * oldBox.x)),
+                y: Math.round(alpha * newBox.y + (1 - alpha) * (beta * predicted.y + (1 - beta) * oldBox.y)),
+                width: Math.round(alpha * newBox.width + (1 - alpha) * (beta * predicted.width + (1 - beta) * oldBox.width)),
+                height: Math.round(alpha * newBox.height + (1 - alpha) * (beta * predicted.height + (1 - beta) * oldBox.height))
+            };
+        } else {
+            // Fallback to simple exponential smoothing
+            smoothed = {
+                x: Math.round(alpha * newBox.x + (1 - alpha) * oldBox.x),
+                y: Math.round(alpha * newBox.y + (1 - alpha) * oldBox.y),
+                width: Math.round(alpha * newBox.width + (1 - alpha) * oldBox.width),
+                height: Math.round(alpha * newBox.height + (1 - alpha) * oldBox.height)
+            };
+        }
 
         // Ensure non-negative dimensions
         smoothed.width = Math.max(1, smoothed.width);
         smoothed.height = Math.max(1, smoothed.height);
 
         return smoothed;
+    }
+
+    /**
+     * Calculate and update velocity for tracked object
+     */
+    updateVelocity(tracked, newBox, deltaTime) {
+        if (!this.enableVelocityTracking || deltaTime <= 0) {
+            return;
+        }
+
+        // Calculate instantaneous velocity
+        const instantVelocity = {
+            x: (newBox.x - tracked.bbox.x) / deltaTime,
+            y: (newBox.y - tracked.bbox.y) / deltaTime,
+            width: (newBox.width - tracked.bbox.width) / deltaTime,
+            height: (newBox.height - tracked.bbox.height) / deltaTime
+        };
+
+        // Smooth velocity using exponential moving average
+        const vAlpha = this.velocitySmoothing;
+        tracked.velocity = {
+            x: vAlpha * instantVelocity.x + (1 - vAlpha) * tracked.velocity.x,
+            y: vAlpha * instantVelocity.y + (1 - vAlpha) * tracked.velocity.y,
+            width: vAlpha * instantVelocity.width + (1 - vAlpha) * tracked.velocity.width,
+            height: vAlpha * instantVelocity.height + (1 - vAlpha) * tracked.velocity.height
+        };
     }
 
     /**
@@ -1017,11 +1071,19 @@ class AIRecognitionManager {
             }
 
             if (bestMatch) {
-                // Update tracked object with smoothed bounding box
-                tracked.bbox = this.smoothBoundingBox(bestMatch.bbox, tracked.bbox);
+                // Calculate time delta for velocity tracking
+                const currentTime = performance.now();
+                const deltaTime = Math.max(0.001, (currentTime - (tracked.lastUpdateTime || currentTime)) / 1000); // Convert to seconds
+
+                // Update velocity before smoothing
+                this.updateVelocity(tracked, bestMatch.bbox, deltaTime);
+
+                // Update tracked object with velocity-based smoothed bounding box
+                tracked.bbox = this.smoothBoundingBox(bestMatch.bbox, tracked.bbox, tracked.velocity, deltaTime);
                 tracked.confidence = bestMatch.confidence;
                 tracked.framesSeen++;
                 tracked.missingFrames = 0;
+                tracked.lastUpdateTime = currentTime;
 
                 matchedDetections.push({
                     class: bestMatch.class,
@@ -1051,7 +1113,9 @@ class AIRecognitionManager {
                 bbox: { ...detection.bbox }, // Clone bbox
                 confidence: detection.confidence,
                 framesSeen: 1,
-                missingFrames: 0
+                missingFrames: 0,
+                velocity: { x: 0, y: 0, width: 0, height: 0 }, // Track velocity for prediction
+                lastUpdateTime: performance.now()
             });
 
             matchedDetections.push({
