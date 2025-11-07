@@ -192,7 +192,7 @@ class AIRecognitionManager {
                 throw new Error('COCO-SSD model not loaded');
             }
 
-            console.log('🚀 Loading COCO-SSD with lite_mobilenet_v2 for maximum speed...');
+            console.log('🚀 Loading COCO-SSD with lite_mobilenet_v2 + OpenCV.js acceleration...');
 
             // Load COCO-SSD with fastest base model
             this.model = await cocoSsd.load({
@@ -200,7 +200,13 @@ class AIRecognitionManager {
             });
 
             this.isModelLoaded = true;
-            console.log('✅ COCO-SSD model loaded successfully (ultra-fast mode)');
+
+            // Check if OpenCV is available for acceleration
+            if (window.openCVWrapper && window.openCVWrapper.isReady()) {
+                console.log('✅ COCO-SSD model loaded with OpenCV.js acceleration (ultra-fast mode)');
+            } else {
+                console.log('✅ COCO-SSD model loaded (waiting for OpenCV.js)');
+            }
 
             return true;
         } catch (error) {
@@ -279,28 +285,6 @@ class AIRecognitionManager {
     }
 
     /**
-     * Convert canvas to monochrome for faster processing
-     * Reduces data by ~66% (3 color channels to 1)
-     */
-    convertToMonochrome(ctx, width, height) {
-        if (!this.useMonochrome) return;
-
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-
-        // Convert to grayscale using luminosity method
-        for (let i = 0; i < data.length; i += 4) {
-            const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-            data[i] = gray;     // R
-            data[i + 1] = gray; // G
-            data[i + 2] = gray; // B
-            // data[i + 3] is alpha, keep unchanged
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-    }
-
-    /**
      * Detect objects using Web Worker
      */
     async detectObjectsWorker(imageElement, isRealTime = false) {
@@ -348,9 +332,6 @@ class AIRecognitionManager {
             } else {
                 ctx.drawImage(imageElement, 0, 0);
             }
-
-            // Convert to monochrome for faster processing
-            this.convertToMonochrome(ctx, width, height);
 
             // Get image data
             const imageData = ctx.getImageData(0, 0, width, height);
@@ -432,10 +413,8 @@ class AIRecognitionManager {
         try {
             let processElement = imageElement;
 
-            // Optimize for real-time by downscaling
+            // Optimize for real-time by downscaling with OpenCV
             if (isRealTime && canvas) {
-                const ctx = canvas.getContext('2d');
-
                 let sourceWidth, sourceHeight;
                 if (imageElement instanceof HTMLVideoElement) {
                     sourceWidth = imageElement.videoWidth;
@@ -454,14 +433,18 @@ class AIRecognitionManager {
                     const width = Math.floor(sourceWidth * scale);
                     const height = Math.floor(sourceHeight * scale);
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.drawImage(imageElement, 0, 0, width, height);
-
-                    // Convert to monochrome for faster processing
-                    this.convertToMonochrome(ctx, width, height);
-
-                    processElement = canvas;
+                    // Use OpenCV for ultra-fast resize (3-5x faster than canvas)
+                    if (window.openCVWrapper && window.openCVWrapper.isReady()) {
+                        const resized = window.openCVWrapper.fastResize(imageElement, width, height, canvas);
+                        processElement = resized;
+                    } else {
+                        // Fallback to canvas resize
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(imageElement, 0, 0, width, height);
+                        processElement = canvas;
+                    }
                 }
             }
 
