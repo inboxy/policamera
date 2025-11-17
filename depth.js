@@ -22,6 +22,10 @@ class DepthPredictionManager {
         this.colorMode = 'distance'; // Green (near) to Red (far) - optimized for distance visualization
         this.showAvgDepth = true; // Show average depth value
 
+        // Dual view mode
+        this.dualViewMode = false; // When true, render to separate canvas
+        this.depthCanvas = null; // Reference to dedicated depth canvas
+
         // Cached depth data
         this.lastDepthMap = null;
         this.avgDepth = 0;
@@ -600,6 +604,116 @@ class DepthPredictionManager {
         // Reset text alignment
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
+    }
+
+    /**
+     * Enable/disable dual view mode
+     */
+    setDualViewMode(enabled, depthCanvasId = 'depthCanvas') {
+        this.dualViewMode = enabled;
+
+        if (enabled) {
+            this.depthCanvas = document.getElementById(depthCanvasId);
+            if (!this.depthCanvas) {
+                console.error('Depth canvas not found:', depthCanvasId);
+                this.dualViewMode = false;
+                return false;
+            }
+            console.log('🌊 Dual view mode enabled - rendering to separate canvas');
+        } else {
+            this.depthCanvas = null;
+            console.log('🌊 Dual view mode disabled - rendering as overlay');
+        }
+
+        return this.dualViewMode;
+    }
+
+    /**
+     * Render depth map to dedicated canvas (for dual view mode)
+     */
+    async renderDepthMapToCanvas(depthMap, canvasElement) {
+        if (!depthMap || !canvasElement) return;
+
+        try {
+            const ctx = canvasElement.getContext('2d', { willReadFrequently: true });
+            const width = canvasElement.width;
+            const height = canvasElement.height;
+
+            // Resize canvas if needed
+            if (this.colorMapCanvas.width !== width || this.colorMapCanvas.height !== height) {
+                this.colorMapCanvas.width = width;
+                this.colorMapCanvas.height = height;
+            }
+
+            const colorCtx = this.colorMapCanvas.getContext('2d', { willReadFrequently: true });
+
+            // Get depth data
+            const depthData = await depthMap.data();
+            const depthWidth = depthMap.shape[1];
+            const depthHeight = depthMap.shape[0];
+
+            // Create or reuse ImageData
+            if (!this.cachedImageData ||
+                this.cachedDepthWidth !== depthWidth ||
+                this.cachedDepthHeight !== depthHeight) {
+                this.cachedImageData = colorCtx.createImageData(depthWidth, depthHeight);
+                this.cachedDepthWidth = depthWidth;
+                this.cachedDepthHeight = depthHeight;
+            }
+
+            const imageData = this.cachedImageData;
+            const data = imageData.data;
+
+            // Apply color mapping (same as overlay mode)
+            for (let i = 0; i < depthData.length; i++) {
+                const pixelIndex = i * 4;
+                const depthValue = depthData[i];
+                const normalized = depthValue / 255;
+
+                // Inline distance colormap
+                if (this.colorMode === 'distance') {
+                    if (normalized < 0.33) {
+                        const t = normalized / 0.33;
+                        data[pixelIndex] = Math.round(144 + (255 - 144) * t);
+                        data[pixelIndex + 1] = Math.round(238 + (255 - 238) * t);
+                        data[pixelIndex + 2] = Math.round(144 - 144 * t);
+                    } else if (normalized < 0.67) {
+                        const t = (normalized - 0.33) / 0.34;
+                        data[pixelIndex] = 255;
+                        data[pixelIndex + 1] = Math.round(255 - (255 - 165) * t);
+                        data[pixelIndex + 2] = 0;
+                    } else {
+                        const t = (normalized - 0.67) / 0.33;
+                        data[pixelIndex] = Math.round(255 - (255 - 139) * t);
+                        data[pixelIndex + 1] = Math.round(165 - 165 * t);
+                        data[pixelIndex + 2] = 0;
+                    }
+                } else {
+                    // Fallback to method call for other modes
+                    const [r, g, b] = this.applyColorMap(depthValue, this.colorMode);
+                    data[pixelIndex] = r;
+                    data[pixelIndex + 1] = g;
+                    data[pixelIndex + 2] = b;
+                }
+                data[pixelIndex + 3] = 255; // Full alpha
+            }
+
+            // Draw to color map canvas
+            colorCtx.putImageData(imageData, 0, 0);
+
+            // Clear canvas and draw scaled depth map
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(this.colorMapCanvas, 0, 0, width, height);
+
+            // Draw depth statistics
+            if (this.showAvgDepth) {
+                await this.analyzeDepth(depthMap);
+                this.drawDepthStats(ctx, width, height);
+            }
+
+        } catch (error) {
+            console.error('Failed to render depth map to canvas:', error);
+        }
     }
 
     /**
