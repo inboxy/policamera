@@ -20,6 +20,8 @@ class PoliCameraApp {
         this.currentPoses = [];
         this.isFaceDetectionEnabled = false;
         this.currentFaces = [];
+        this.isDepthPredictionEnabled = false;
+        this.currentDepthMap = null;
         this.isGPSMinimized = false;
 
         this.initializeElements();
@@ -54,8 +56,16 @@ class PoliCameraApp {
         this.qrFab = document.getElementById('qrFab');
         this.poseFab = document.getElementById('poseFab');
         this.faceFab = document.getElementById('faceFab');
+        this.depthFab = document.getElementById('depthFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
+
+        // Debug: Check if depth button exists
+        if (!this.depthFab) {
+            console.error('❌ Depth FAB button not found in DOM!');
+        } else {
+            console.log('✅ Depth FAB button found:', this.depthFab);
+        }
 
         // Location elements
         this.latitudeEl = document.getElementById('latitude');
@@ -92,6 +102,7 @@ class PoliCameraApp {
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
+        this.depthFab.addEventListener('click', () => this.toggleDepthPrediction());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
         this.gpsToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -549,6 +560,16 @@ class PoliCameraApp {
                 this.captureFab.style.display = 'flex';
                 this.poseFab.style.display = 'flex';
                 this.faceFab.style.display = 'flex';
+                this.depthFab.style.display = 'flex';
+                console.log('✅ All feature buttons displayed (including depth)');
+
+                // Log available managers
+                console.log('Available AI managers:', {
+                    ai: !!window.aiRecognitionManager,
+                    pose: !!window.poseEstimationManager,
+                    face: !!window.faceDetectionManager,
+                    depth: !!window.depthPredictionManager
+                });
             }
 
             // Show errors if any
@@ -731,6 +752,36 @@ class PoliCameraApp {
         }
     }
 
+    async toggleDepthPrediction() {
+        console.log('🌊 Toggle depth prediction clicked');
+
+        if (!window.depthPredictionManager) {
+            console.error('❌ Depth prediction manager not available');
+            this.showError('Depth prediction not available - manager not loaded');
+            return;
+        }
+
+        try {
+            console.log('Initializing depth prediction...');
+            const isEnabled = await depthPredictionManager.toggle();
+            this.isDepthPredictionEnabled = isEnabled;
+
+            console.log('Depth prediction toggled:', isEnabled ? 'ON' : 'OFF');
+
+            // Update button styling
+            if (isEnabled) {
+                this.depthFab.classList.add('active');
+                this.showToast('Depth prediction enabled', 'layers');
+            } else {
+                this.depthFab.classList.remove('active');
+                this.showToast('Depth prediction disabled', 'layers');
+            }
+        } catch (error) {
+            console.error('❌ Failed to toggle depth prediction:', error);
+            this.showError('Failed to initialize depth prediction: ' + error.message);
+        }
+    }
+
     toggleGPSOverlay() {
         this.isGPSMinimized = !this.isGPSMinimized;
 
@@ -807,6 +858,23 @@ class PoliCameraApp {
             }
         }
 
+        // Run depth prediction on the captured image
+        let depthData = null;
+        if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
+            try {
+                console.log('Running depth prediction on captured photo...');
+                const depthMap = await depthPredictionManager.predictDepth(canvas, false);
+                depthData = await depthPredictionManager.exportDepthData(depthMap);
+                console.log('Depth prediction results:', depthData);
+                // Dispose depth map after exporting data
+                if (depthMap) {
+                    depthMap.dispose();
+                }
+            } catch (error) {
+                console.error('Depth prediction failed:', error);
+            }
+        }
+
         // Create photo object with metadata
         const photo = {
             id: Date.now(),
@@ -818,7 +886,8 @@ class PoliCameraApp {
             networkInfo: networkManager.getNetworkInfo(),
             aiAnalysis: aiAnalysis,
             poseData: poseData,
-            faceData: faceData
+            faceData: faceData,
+            depthData: depthData
         };
 
         this.capturedPhotos.push(photo);
@@ -1073,7 +1142,21 @@ class PoliCameraApp {
             }
         }
 
-        details.innerHTML = basicInfo + aiInfo + poseInfo + faceInfo;
+        // Depth prediction section
+        let depthInfo = '';
+        if (photo.depthData) {
+            depthInfo = `
+                <hr style="margin: 16px 0; border: 1px solid var(--md-sys-color-outline-variant);">
+                <div><strong>🌊 Depth Prediction:</strong></div>
+                <div style="margin-left: 16px;">
+                    <div><strong>Average Depth:</strong> ${photo.depthData.average.toFixed(2)}</div>
+                    <div><strong>Depth Range:</strong> ${photo.depthData.min.toFixed(2)} - ${photo.depthData.max.toFixed(2)}</div>
+                    <div><strong>Color Mode:</strong> ${photo.depthData.colorMode}</div>
+                </div>
+            `;
+        }
+
+        details.innerHTML = basicInfo + aiInfo + poseInfo + faceInfo + depthInfo;
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = 'Close';
@@ -1420,6 +1503,13 @@ class PoliCameraApp {
                 this.currentFaces = [];
             }
 
+            // Predict depth if enabled
+            if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
+                this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
+            } else {
+                this.currentDepthMap = null;
+            }
+
             // Only draw if we got results (frame wasn't skipped for performance)
             if (detections && detections.length >= 0) {
                 this.drawRealtimeDetections(detections);
@@ -1457,6 +1547,17 @@ class PoliCameraApp {
         const videoRect = this.video.getBoundingClientRect();
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
+
+        // Draw depth map first (as background layer) if enabled
+        if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
+            depthPredictionManager.renderDepthMap(
+                ctx,
+                this.currentDepthMap,
+                this.detectionOverlay.width,
+                this.detectionOverlay.height,
+                depthPredictionManager.depthOpacity
+            );
+        }
 
         // Draw "AI Active" indicator in corner when no detections, poses, or faces
         if (detections.length === 0 && this.currentPoses.length === 0 && this.currentFaces.length === 0) {
@@ -1915,6 +2016,15 @@ class PoliCameraApp {
         // Cleanup face detection
         if (window.faceDetectionManager) {
             faceDetectionManager.cleanup();
+        }
+        // Cleanup depth prediction
+        if (window.depthPredictionManager) {
+            depthPredictionManager.cleanup();
+        }
+        // Cleanup current depth map if exists
+        if (this.currentDepthMap) {
+            this.currentDepthMap.dispose();
+            this.currentDepthMap = null;
         }
     }
 }
