@@ -39,16 +39,26 @@ class DepthPredictionManager {
 
         // Visualization settings (OPTIMIZED for performance)
         this.depthOpacity = 0.7; // Increased opacity for better visibility
-        this.colorMode = 'distance'; // Green (near) to Red (far) - optimized for distance visualization
+        this.colorMode = 'midas'; // MiDaS theme: white=near, dark=far
         this.showAvgDepth = true; // Show average depth value
 
         // Quality settings
         this.enableDepthSmoothing = true; // Apply bilateral filtering
         this.depthEnhancement = 1.2; // Contrast enhancement factor
 
+        // Picture-in-Picture mode (depth view in top left)
+        this.pipMode = false; // When true, show small depth view in top left
+        this.pipSize = 0.15; // 15% of original image size
+        this.pipCanvas = null; // Reference to PiP canvas
+
         // Dual view mode
         this.dualViewMode = false; // When true, render to separate canvas
         this.depthCanvas = null; // Reference to dedicated depth canvas
+
+        // FPS tracking
+        this.fpsHistory = [];
+        this.lastFpsUpdate = 0;
+        this.currentFps = 0;
 
         // Cached depth data
         this.lastDepthMap = null;
@@ -182,9 +192,11 @@ class DepthPredictionManager {
             return null;
         }
 
+        const frameStartTime = performance.now();
+
         // Frame throttling for real-time performance
         if (isRealTime) {
-            const currentTime = performance.now();
+            const currentTime = frameStartTime;
             if (currentTime - this.lastProcessTime < this.targetFrameTime) {
                 return this.lastDepthMap; // Return cached result
             }
@@ -201,6 +213,10 @@ class DepthPredictionManager {
                 // Fallback to simplified estimation
                 depthMap = await this.estimateDepthSimplified(imageElement);
             }
+
+            // Update FPS tracking
+            const frameTime = performance.now() - frameStartTime;
+            this.updateFPS(frameTime);
 
             // Dispose old cached depth map to prevent memory leaks
             if (this.lastDepthMap && this.lastDepthMap !== depthMap) {
@@ -580,6 +596,9 @@ class DepthPredictionManager {
         const normalized = value / 255;
 
         switch (mode) {
+            case 'midas':
+                return this.midasColormap(normalized);
+
             case 'distance':
                 return this.distanceColormap(normalized);
 
@@ -596,8 +615,19 @@ class DepthPredictionManager {
                 return this.viridisColormap(normalized);
 
             default:
-                return this.distanceColormap(normalized);
+                return this.midasColormap(normalized);
         }
+    }
+
+    /**
+     * MiDaS colormap - White (near) to Black (far)
+     * Classic MiDaS depth visualization
+     */
+    midasColormap(value) {
+        // value: 0 = close (white), 1 = far (black)
+        // Invert so white = near, black = far
+        const intensity = Math.round((1 - value) * 255);
+        return [intensity, intensity, intensity];
     }
 
     /**
@@ -711,8 +741,14 @@ class DepthPredictionManager {
                 const depthValue = depthData[i];
                 const normalized = depthValue / 255;
 
-                // Inline color mapping for distance mode (most common) for speed
-                if (this.colorMode === 'distance') {
+                // Inline color mapping for midas mode (most common) for speed
+                if (this.colorMode === 'midas') {
+                    // Optimized inline MiDaS colormap: White (near) to Black (far)
+                    const intensity = Math.round((1 - normalized) * 255);
+                    data[pixelIndex] = intensity;
+                    data[pixelIndex + 1] = intensity;
+                    data[pixelIndex + 2] = intensity;
+                } else if (this.colorMode === 'distance') {
                     // Optimized inline distance colormap: Green (near) to Red (far)
                     if (normalized < 0.33) {
                         const t = normalized / 0.33;
@@ -767,6 +803,9 @@ class DepthPredictionManager {
 
             // Draw "DEPTH ACTIVE" indicator in top-right
             this.drawActiveIndicator(ctx, width, height);
+
+            // Draw FPS indicator on bottom edge
+            this.drawFPSIndicator(ctx, width, height);
 
         } catch (error) {
             console.error('Failed to render depth map:', error);
@@ -955,8 +994,13 @@ class DepthPredictionManager {
                 const depthValue = depthData[i];
                 const normalized = depthValue / 255;
 
-                // Inline distance colormap
-                if (this.colorMode === 'distance') {
+                // Inline MiDaS colormap
+                if (this.colorMode === 'midas') {
+                    const intensity = Math.round((1 - normalized) * 255);
+                    data[pixelIndex] = intensity;
+                    data[pixelIndex + 1] = intensity;
+                    data[pixelIndex + 2] = intensity;
+                } else if (this.colorMode === 'distance') {
                     if (normalized < 0.33) {
                         const t = normalized / 0.33;
                         data[pixelIndex] = Math.round(144 + (255 - 144) * t);
@@ -996,16 +1040,107 @@ class DepthPredictionManager {
                 this.drawDepthStats(ctx, width, height);
             }
 
+            // Draw FPS indicator
+            this.drawFPSIndicator(ctx, width, height);
+
         } catch (error) {
             console.error('Failed to render depth map to canvas:', error);
         }
     }
 
     /**
+     * Render depth map as picture-in-picture overlay (top left, 15% size)
+     */
+    renderPictureInPicture(ctx, depthMap, mainWidth, mainHeight) {
+        if (!depthMap) return;
+
+        const pipWidth = Math.round(mainWidth * this.pipSize);
+        const pipHeight = Math.round(mainHeight * this.pipSize);
+        const padding = 12;
+        const x = padding;
+        const y = padding;
+
+        try {
+            // Create temporary canvas for PiP depth rendering
+            if (!this.pipCanvas) {
+                this.pipCanvas = document.createElement('canvas');
+            }
+
+            this.pipCanvas.width = pipWidth;
+            this.pipCanvas.height = pipHeight;
+            const pipCtx = this.pipCanvas.getContext('2d');
+
+            // Render depth to PiP canvas (without stats/indicators)
+            this.renderDepthToContext(pipCtx, depthMap, pipWidth, pipHeight, false);
+
+            // Draw PiP to main canvas with border
+            ctx.save();
+
+            // Background/border
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(x - 2, y - 2, pipWidth + 4, pipHeight + 4);
+
+            // Draw depth map
+            ctx.drawImage(this.pipCanvas, x, y, pipWidth, pipHeight);
+
+            // Border
+            ctx.strokeStyle = 'rgba(180, 242, 34, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, pipWidth, pipHeight);
+
+            // Label
+            ctx.fillStyle = 'rgba(180, 242, 34, 0.9)';
+            ctx.fillRect(x, y + pipHeight - 20, pipWidth, 20);
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 11px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('DEPTH', x + pipWidth / 2, y + pipHeight - 6);
+
+            ctx.restore();
+
+        } catch (error) {
+            console.error('Failed to render PiP depth:', error);
+        }
+    }
+
+    /**
+     * Helper to render depth map to a context (used by PiP)
+     */
+    async renderDepthToContext(ctx, depthMap, width, height, includeOverlays = true) {
+        const depthData = await depthMap.data();
+        const depthWidth = depthMap.shape[1] || depthMap.shape[0];
+        const depthHeight = depthMap.shape[0];
+
+        // Create temp canvas for color mapping
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = depthWidth;
+        tempCanvas.height = depthHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        const imageData = tempCtx.createImageData(depthWidth, depthHeight);
+        const data = imageData.data;
+
+        // Apply MiDaS colormap
+        for (let i = 0; i < depthData.length; i++) {
+            const pixelIndex = i * 4;
+            const normalized = depthData[i] / 255;
+            const intensity = Math.round((1 - normalized) * 255);
+            data[pixelIndex] = intensity;
+            data[pixelIndex + 1] = intensity;
+            data[pixelIndex + 2] = intensity;
+            data[pixelIndex + 3] = 255;
+        }
+
+        tempCtx.putImageData(imageData, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(tempCanvas, 0, 0, width, height);
+    }
+
+    /**
      * Change color mode
      */
     setColorMode(mode) {
-        const validModes = ['distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
+        const validModes = ['midas', 'distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
         if (validModes.includes(mode)) {
             this.colorMode = mode;
             console.log('Depth color mode:', mode);
@@ -1058,8 +1193,63 @@ class DepthPredictionManager {
             depthEnhancement: this.depthEnhancement,
             enableSmoothing: this.enableDepthSmoothing,
             usingMiDaS: this.model !== null,
-            isEnabled: this.isEnabled
+            isEnabled: this.isEnabled,
+            currentFps: this.currentFps
         };
+    }
+
+    /**
+     * Update FPS tracking
+     */
+    updateFPS(frameTime) {
+        const fps = 1000 / frameTime;
+        this.fpsHistory.push(fps);
+
+        // Keep last 30 frames
+        if (this.fpsHistory.length > 30) {
+            this.fpsHistory.shift();
+        }
+
+        // Update every 500ms
+        const now = performance.now();
+        if (now - this.lastFpsUpdate > 500) {
+            const avgFps = this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length;
+            this.currentFps = Math.round(avgFps);
+            this.lastFpsUpdate = now;
+        }
+    }
+
+    /**
+     * Draw FPS indicator on bottom edge
+     */
+    drawFPSIndicator(ctx, width, height) {
+        if (this.currentFps === 0) return;
+
+        const padding = 12;
+        const boxWidth = 80;
+        const boxHeight = 28;
+        const x = width - boxWidth - padding;
+        const y = height - boxHeight - padding;
+
+        // Background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(x, y, boxWidth, boxHeight);
+
+        // Border
+        ctx.strokeStyle = this.currentFps >= 10 ? 'rgba(144, 238, 144, 0.8)' : 'rgba(255, 100, 100, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, boxWidth, boxHeight);
+
+        // FPS Text
+        ctx.font = 'bold 16px monospace';
+        ctx.fillStyle = this.currentFps >= 10 ? '#90EE90' : '#FF6464';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${this.currentFps} FPS`, x + boxWidth / 2, y + boxHeight / 2);
+
+        // Reset alignment
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
     }
 
     /**

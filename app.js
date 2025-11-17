@@ -732,34 +732,21 @@ class PoliCameraApp {
 
             console.log('Depth prediction toggled:', isEnabled ? 'ON' : 'OFF');
 
-            // Enable/disable dual view mode
+            // Enable/disable picture-in-picture mode
             if (isEnabled) {
-                // Enable dual view mode
-                depthPredictionManager.setDualViewMode(true, 'depthCanvas');
-
-                // Show depth container and update layout
-                this.depthContainer.style.display = 'block';
-                this.dualViewContainer.classList.remove('single-view');
-                this.dualViewContainer.classList.add('dual-view');
-
-                // Resize depth canvas to match container
-                this.resizeDepthCanvas();
+                // Enable PiP mode (depth overlay in top left)
+                depthPredictionManager.pipMode = true;
 
                 // Update button styling
                 this.depthFab.classList.add('active');
-                this.showToast('Dual view mode enabled - Camera + Depth', 'layers');
+                this.showToast('Depth PiP enabled - White=Near, Black=Far', 'layers');
             } else {
-                // Disable dual view mode
-                depthPredictionManager.setDualViewMode(false);
-
-                // Hide depth container and update layout
-                this.depthContainer.style.display = 'none';
-                this.dualViewContainer.classList.remove('dual-view');
-                this.dualViewContainer.classList.add('single-view');
+                // Disable PiP mode
+                depthPredictionManager.pipMode = false;
 
                 // Update button styling
                 this.depthFab.classList.remove('active');
-                this.showToast('Dual view mode disabled', 'layers');
+                this.showToast('Depth estimation disabled', 'layers');
             }
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
@@ -1451,19 +1438,15 @@ class PoliCameraApp {
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
 
-        // Render depth map (to dedicated canvas in dual view mode, or as overlay)
+        // Render depth map in PiP mode (picture-in-picture in top left)
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
-            if (depthPredictionManager.dualViewMode && this.depthCanvas) {
-                // Dual view mode: render to dedicated canvas
-                depthPredictionManager.renderDepthMapToCanvas(this.currentDepthMap, this.depthCanvas);
-            } else {
-                // Overlay mode: render to detection overlay canvas
-                depthPredictionManager.renderDepthMap(
+            if (depthPredictionManager.pipMode) {
+                // PiP mode: render small depth view in top-left corner at 15% size
+                depthPredictionManager.renderPictureInPicture(
                     ctx,
                     this.currentDepthMap,
                     this.detectionOverlay.width,
-                    this.detectionOverlay.height,
-                    depthPredictionManager.depthOpacity
+                    this.detectionOverlay.height
                 );
             }
         }
