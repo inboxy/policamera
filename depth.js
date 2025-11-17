@@ -2,6 +2,9 @@
  * Depth Prediction Manager for PoliCamera
  * Uses TensorFlow.js with MiDaS model for monocular depth estimation
  */
+
+console.log('🌊 Loading depth.js module...');
+
 class DepthPredictionManager {
     constructor() {
         this.model = null;
@@ -15,7 +18,7 @@ class DepthPredictionManager {
         this.lastProcessTime = 0;
 
         // Visualization settings (OPTIMIZED for performance)
-        this.depthOpacity = 0.5; // Reduced opacity for faster blending
+        this.depthOpacity = 0.7; // Increased opacity for better visibility
         this.colorMode = 'turbo'; // Turbo is inline-optimized in renderDepthMap
         this.showAvgDepth = true; // Show average depth value
 
@@ -161,7 +164,7 @@ class DepthPredictionManager {
      */
     async estimateDepthSimplified(imageElement) {
         try {
-            const ctx = this.preprocessCanvas.getContext('2d');
+            const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
 
             // Draw image to preprocessing canvas at model input size
             ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
@@ -359,7 +362,7 @@ class DepthPredictionManager {
                 this.colorMapCanvas.height = height;
             }
 
-            const colorCtx = this.colorMapCanvas.getContext('2d');
+            const colorCtx = this.colorMapCanvas.getContext('2d', { willReadFrequently: true });
 
             // Get depth data
             const depthData = await depthMap.data();
@@ -418,6 +421,9 @@ class DepthPredictionManager {
                 this.drawDepthStats(ctx, width, height);
             }
 
+            // Draw "DEPTH ACTIVE" indicator in top-right
+            this.drawActiveIndicator(ctx, width, height);
+
         } catch (error) {
             console.error('Failed to render depth map:', error);
         }
@@ -429,9 +435,9 @@ class DepthPredictionManager {
     drawDepthStats(ctx, width, height) {
         const padding = 12;
         const x = padding;
-        const y = height - 80;
-        const boxWidth = 180;
-        const boxHeight = 60;
+        const y = height - 100; // Moved up slightly to avoid overlap
+        const boxWidth = 200;
+        const boxHeight = 75;
 
         // Helper function to draw rounded rectangle (polyfill for older browsers)
         const drawRoundedRect = (x, y, width, height, radius) => {
@@ -448,22 +454,75 @@ class DepthPredictionManager {
             ctx.closePath();
         };
 
-        // Background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        // Background with border
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
         drawRoundedRect(x, y, boxWidth, boxHeight, 8);
         ctx.fill();
 
+        // Border
+        ctx.strokeStyle = 'rgba(27, 194, 152, 0.8)'; // Turquoise border for depth
+        ctx.lineWidth = 2;
+        drawRoundedRect(x, y, boxWidth, boxHeight, 8);
+        ctx.stroke();
+
         // Text
-        ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#1BC298'; // Turquoise color
 
         const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
         const rangeText = `Range: ${this.minDepth.toFixed(0)}-${this.maxDepth.toFixed(0)}`;
+        const modeText = `Mode: ${this.colorMode.toUpperCase()}`;
 
-        ctx.fillText('🌊 DEPTH MAP', x + 10, y + 20);
+        ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(avgText, x + 10, y + 42);
+        ctx.fillText(rangeText, x + 10, y + 58);
         ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillText(avgText, x + 10, y + 38);
-        ctx.fillText(rangeText, x + 10, y + 52);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillText(modeText, x + 10, y + 72);
+    }
+
+    /**
+     * Draw active indicator in top-right corner
+     */
+    drawActiveIndicator(ctx, width, height) {
+        const padding = 12;
+        const boxWidth = 140;
+        const boxHeight = 32;
+        const x = width - boxWidth - padding;
+        const y = padding;
+
+        // Helper function for rounded rectangle
+        const drawRoundedRect = (x, y, width, height, radius) => {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        };
+
+        // Background
+        ctx.fillStyle = 'rgba(27, 194, 152, 0.9)'; // Turquoise background
+        drawRoundedRect(x, y, boxWidth, boxHeight, 6);
+        ctx.fill();
+
+        // Text
+        ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌊 DEPTH ACTIVE', x + boxWidth / 2, y + boxHeight / 2);
+
+        // Reset text alignment
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
     }
 
     /**
@@ -516,12 +575,29 @@ class DepthPredictionManager {
 }
 
 // Create singleton instance
-const depthPredictionManager = new DepthPredictionManager();
+console.log('🌊 Creating depth prediction manager singleton...');
+let depthPredictionManager;
+
+try {
+    depthPredictionManager = new DepthPredictionManager();
+    console.log('✅ Depth prediction manager instance created');
+} catch (error) {
+    console.error('❌ Failed to create depth prediction manager:', error);
+    // Create a dummy object to prevent undefined errors
+    depthPredictionManager = {
+        isSupported: () => false,
+        initializeModel: async () => false,
+        toggle: async () => { throw new Error('Depth prediction not available'); },
+        predictDepth: async () => null,
+        cleanup: () => {}
+    };
+}
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = depthPredictionManager;
 } else {
     window.depthPredictionManager = depthPredictionManager;
-    console.log('✅ Depth prediction manager ready (singleton created)');
+    console.log('✅ Depth prediction manager exported to window.depthPredictionManager');
+    console.log('Depth manager instance:', depthPredictionManager);
 }
