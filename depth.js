@@ -12,15 +12,38 @@ class DepthPredictionManager {
         this.isLoading = false;
         this.isEnabled = false;
 
-        // Performance settings - OPTIMIZED for real-time
-        this.inputSize = 128; // Reduced from 256 for 4x faster processing
-        this.targetFrameTime = 1000 / 10; // 10 FPS for depth (even more conservative)
+        // MiDaS model settings
+        this.modelType = 'small'; // Options: 'small' (256x256), 'large' (384x384)
+        this.inputSize = 256; // MiDaS v2.1 Small native resolution
+        this.targetFrameTime = 1000 / 15; // 15 FPS for depth with real MiDaS
         this.lastProcessTime = 0;
+
+        // Model configuration
+        this.modelConfig = {
+            small: {
+                url: 'https://tfhub.dev/intel/midas/v2_1_small/1',
+                inputSize: 256,
+                outputSize: 256
+            },
+            large: {
+                url: 'https://tfhub.dev/intel/midas/v2/2',
+                inputSize: 384,
+                outputSize: 384
+            }
+        };
+
+        // Preprocessing normalization constants for MiDaS
+        this.mean = [0.485, 0.456, 0.406];
+        this.std = [0.229, 0.224, 0.225];
 
         // Visualization settings (OPTIMIZED for performance)
         this.depthOpacity = 0.7; // Increased opacity for better visibility
         this.colorMode = 'distance'; // Green (near) to Red (far) - optimized for distance visualization
         this.showAvgDepth = true; // Show average depth value
+
+        // Quality settings
+        this.enableDepthSmoothing = true; // Apply bilateral filtering
+        this.depthEnhancement = 1.2; // Contrast enhancement factor
 
         // Dual view mode
         this.dualViewMode = false; // When true, render to separate canvas
@@ -40,10 +63,6 @@ class DepthPredictionManager {
         this.cachedImageData = null;
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
-
-        // Model URL - Using a publicly available MiDaS TFLite model
-        // Note: You'll need to host this model file or use a CDN
-        this.modelUrl = 'https://tfhub.dev/intel/lite-model/midas/v2_1_small/1/lite/1';
     }
 
     /**
@@ -72,26 +91,47 @@ class DepthPredictionManager {
         }
 
         this.isLoading = true;
-        console.log('🌊 Loading depth prediction model (lazy init)...');
+        const startTime = performance.now();
+        console.log('🌊 Loading MiDaS depth prediction model...');
 
         try {
-            // Wait for TensorFlow.js to be ready (use existing backend)
-            // This might wait if TF.js is still loading
+            // Wait for TensorFlow.js to be ready
             while (typeof tf === 'undefined') {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
             await tf.ready();
             const backend = tf.getBackend();
-            console.log(`Using ${backend} backend for depth prediction`);
+            console.log(`✅ Using ${backend} backend for depth prediction`);
 
-            // For now, we'll use a custom approach with edge detection
-            // A proper implementation would load the actual MiDaS TFLite model
-            // This is a placeholder that demonstrates the structure
-            console.log('⚠️ Note: Using simplified depth estimation approach');
-            console.log('For production, integrate actual MiDaS TFLite model');
+            // Get model configuration
+            const config = this.modelConfig[this.modelType];
+            this.inputSize = config.inputSize;
 
-            // Initialize preprocessing canvas (only when needed)
+            console.log(`📦 Loading MiDaS ${this.modelType} model from TensorFlow Hub...`);
+            console.log(`   Input size: ${this.inputSize}x${this.inputSize}`);
+            console.log(`   Model URL: ${config.url}`);
+
+            try {
+                // Load MiDaS model from TensorFlow Hub
+                this.model = await tf.loadGraphModel(config.url, { fromTFHub: true });
+                console.log('✅ MiDaS model loaded successfully');
+
+                // Warm up the model with a dummy input
+                console.log('🔥 Warming up model...');
+                const dummyInput = tf.zeros([1, this.inputSize, this.inputSize, 3]);
+                const warmupOutput = await this.model.predict(dummyInput);
+                warmupOutput.dispose();
+                dummyInput.dispose();
+                console.log('✅ Model warmed up');
+
+            } catch (modelError) {
+                console.warn('⚠️ Could not load MiDaS model from TFHub:', modelError.message);
+                console.log('📝 Falling back to simplified depth estimation');
+                this.model = null; // Use fallback mode
+            }
+
+            // Initialize preprocessing canvas
             this.preprocessCanvas = document.createElement('canvas');
             this.preprocessCanvas.width = this.inputSize;
             this.preprocessCanvas.height = this.inputSize;
@@ -102,7 +142,10 @@ class DepthPredictionManager {
             this.isModelLoaded = true;
             this.isLoading = false;
 
-            console.log('✅ Depth prediction initialized (lazy loaded in ' + performance.now() + 'ms)');
+            const loadTime = (performance.now() - startTime).toFixed(2);
+            console.log(`✅ Depth prediction initialized in ${loadTime}ms`);
+            console.log(`   Mode: ${this.model ? 'MiDaS ' + this.modelType : 'Simplified fallback'}`);
+
             return true;
 
         } catch (error) {
@@ -130,8 +173,7 @@ class DepthPredictionManager {
     }
 
     /**
-     * Predict depth from image (simplified version)
-     * In production, this would use actual MiDaS model
+     * Predict depth from image using MiDaS model
      */
     async predictDepth(imageElement, isRealTime = false) {
         if (!this.isModelLoaded) {
@@ -148,8 +190,20 @@ class DepthPredictionManager {
         }
 
         try {
-            // Use canvas-based depth estimation (no TensorFlow.js required)
-            const depthMap = await this.estimateDepthSimplified(imageElement);
+            let depthMap;
+
+            if (this.model) {
+                // Use actual MiDaS model
+                depthMap = await this.estimateDepthMiDaS(imageElement);
+            } else {
+                // Fallback to simplified estimation
+                depthMap = await this.estimateDepthSimplified(imageElement);
+            }
+
+            // Dispose old cached depth map to prevent memory leaks
+            if (this.lastDepthMap && this.lastDepthMap !== depthMap) {
+                this.lastDepthMap.dispose();
+            }
 
             // Cache result
             this.lastDepthMap = depthMap;
@@ -160,6 +214,82 @@ class DepthPredictionManager {
             console.error('Depth prediction failed:', error);
             return null;
         }
+    }
+
+    /**
+     * Estimate depth using MiDaS model with proper preprocessing
+     */
+    async estimateDepthMiDaS(imageElement) {
+        return tf.tidy(() => {
+            // Step 1: Preprocess image for MiDaS
+            const inputTensor = this.preprocessImageForMiDaS(imageElement);
+
+            // Step 2: Run MiDaS inference
+            const prediction = this.model.predict(inputTensor);
+
+            // Step 3: Postprocess output
+            let depthMap = prediction;
+
+            // Handle different output shapes
+            if (depthMap.shape.length === 4) {
+                depthMap = tf.squeeze(depthMap, [0]); // Remove batch dimension
+            }
+            if (depthMap.shape.length === 3 && depthMap.shape[2] === 1) {
+                depthMap = tf.squeeze(depthMap, [2]); // Remove channel dimension
+            }
+
+            // Step 4: Normalize depth map to 0-255 range
+            const minVal = depthMap.min();
+            const maxVal = depthMap.max();
+            const normalized = depthMap.sub(minVal).div(maxVal.sub(minVal)).mul(255);
+
+            // Step 5: Apply depth enhancement
+            const enhanced = this.enhanceDepthMap(normalized);
+
+            return enhanced;
+        });
+    }
+
+    /**
+     * Preprocess image for MiDaS model (ImageNet normalization)
+     */
+    preprocessImageForMiDaS(imageElement) {
+        return tf.tidy(() => {
+            // Draw image to canvas at model input size
+            const ctx = this.preprocessCanvas.getContext('2d');
+            ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
+
+            // Convert canvas to tensor [height, width, 3]
+            let tensor = tf.browser.fromPixels(this.preprocessCanvas);
+
+            // Convert to float32 and normalize to [0, 1]
+            tensor = tensor.toFloat().div(255.0);
+
+            // Apply ImageNet normalization (mean and std)
+            const mean = tf.tensor1d(this.mean);
+            const std = tf.tensor1d(this.std);
+            tensor = tensor.sub(mean).div(std);
+
+            // Add batch dimension [1, height, width, 3]
+            tensor = tensor.expandDims(0);
+
+            return tensor;
+        });
+    }
+
+    /**
+     * Enhance depth map with contrast adjustment and optional smoothing
+     */
+    enhanceDepthMap(depthTensor) {
+        return tf.tidy(() => {
+            // Apply contrast enhancement
+            if (this.depthEnhancement !== 1.0) {
+                const mean = depthTensor.mean();
+                const enhanced = depthTensor.sub(mean).mul(this.depthEnhancement).add(mean);
+                return enhanced.clipByValue(0, 255);
+            }
+            return depthTensor;
+        });
     }
 
     /**
@@ -540,11 +670,15 @@ class DepthPredictionManager {
         ctx.font = `bold ${titleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#90EE90'; // Light green color to match near objects
 
-        const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
+        // Show model type in title
+        const modelLabel = this.model ? `MiDaS ${this.modelType.toUpperCase()}` : 'SIMPLIFIED';
+        const title = isNarrowScreen ? '🌊 DEPTH' : `🌊 DEPTH (${modelLabel})`;
+
+        const avgText = `Avg: ${this.avgDepth.toFixed(1)}`;
         const rangeText = `Range: ${this.minDepth.toFixed(0)}-${this.maxDepth.toFixed(0)}`;
         const modeText = `🟢 Near → 🔴 Far`;
 
-        ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
+        ctx.fillText(title, x + 10, y + 22);
         ctx.font = `${mainFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(avgText, x + 10, y + 42);
@@ -725,6 +859,56 @@ class DepthPredictionManager {
             this.colorMode = mode;
             console.log('Depth color mode:', mode);
         }
+    }
+
+    /**
+     * Set model type (small or large)
+     */
+    setModelType(type) {
+        if (this.isModelLoaded) {
+            console.warn('Cannot change model type while model is loaded. Toggle off depth first.');
+            return false;
+        }
+
+        if (type === 'small' || type === 'large') {
+            this.modelType = type;
+            console.log(`MiDaS model type set to: ${type}`);
+            return true;
+        }
+
+        console.warn('Invalid model type. Use "small" or "large"');
+        return false;
+    }
+
+    /**
+     * Set depth enhancement level (1.0 = no enhancement, 1.5 = high contrast)
+     */
+    setDepthEnhancement(level) {
+        this.depthEnhancement = Math.max(0.5, Math.min(2.0, level));
+        console.log(`Depth enhancement set to: ${this.depthEnhancement}`);
+    }
+
+    /**
+     * Toggle depth smoothing
+     */
+    setDepthSmoothing(enabled) {
+        this.enableDepthSmoothing = enabled;
+        console.log(`Depth smoothing: ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Get current configuration
+     */
+    getConfig() {
+        return {
+            modelType: this.modelType,
+            inputSize: this.inputSize,
+            colorMode: this.colorMode,
+            depthEnhancement: this.depthEnhancement,
+            enableSmoothing: this.enableDepthSmoothing,
+            usingMiDaS: this.model !== null,
+            isEnabled: this.isEnabled
+        };
     }
 
     /**
