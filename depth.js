@@ -2,6 +2,9 @@
  * Depth Prediction Manager for PoliCamera
  * Uses TensorFlow.js with MiDaS model for monocular depth estimation
  */
+
+console.log('🌊 Loading depth.js module...');
+
 class DepthPredictionManager {
     constructor() {
         this.model = null;
@@ -516,12 +519,29 @@ class DepthPredictionManager {
 }
 
 // Create singleton instance
-const depthPredictionManager = new DepthPredictionManager();
+console.log('🌊 Creating depth prediction manager singleton...');
+let depthPredictionManager;
+
+try {
+    depthPredictionManager = new DepthPredictionManager();
+    console.log('✅ Depth prediction manager instance created');
+} catch (error) {
+    console.error('❌ Failed to create depth prediction manager:', error);
+    // Create a dummy object to prevent undefined errors
+    depthPredictionManager = {
+        isSupported: () => false,
+        initializeModel: async () => false,
+        toggle: async () => { throw new Error('Depth prediction not available'); },
+        predictDepth: async () => null,
+        cleanup: () => {}
+    };
+}
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = depthPredictionManager;
 } else {
     window.depthPredictionManager = depthPredictionManager;
-    console.log('✅ Depth prediction manager ready (singleton created)');
+    console.log('✅ Depth prediction manager exported to window.depthPredictionManager');
+    console.log('Depth manager instance:', depthPredictionManager);
 }
