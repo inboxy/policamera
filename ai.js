@@ -192,28 +192,64 @@ class AIRecognitionManager {
                 throw new Error('COCO-SSD model not loaded');
             }
 
-            // CRITICAL: Initialize TensorFlow.js backend before loading models
-            console.log('🔧 Initializing TensorFlow.js backend...');
+            // CRITICAL: Force backend initialization BEFORE any TensorFlow operations
+            console.log('🔧 Forcing TensorFlow.js backend initialization...');
 
+            // Strategy: Remove WebGPU backend if it exists, force WebGL/CPU only
+            // This prevents TensorFlow from auto-selecting WebGPU
             try {
-                // Try WebGL first (most compatible and fast)
+                if (tf.findBackend('webgpu')) {
+                    tf.removeBackend('webgpu');
+                    console.log('🚫 Disabled WebGPU backend');
+                }
+            } catch (e) {
+                // WebGPU backend may not be registered yet, ignore
+            }
+
+            let backendInitialized = false;
+
+            // Try WebGL backend
+            try {
+                console.log('Attempting WebGL backend...');
                 await tf.setBackend('webgl');
                 await tf.ready();
-                console.log('✅ Using WebGL backend');
+
+                // Verify backend is actually webgl
+                const actualBackend = tf.getBackend();
+                if (actualBackend === 'webgl') {
+                    console.log('✅ Using WebGL backend');
+                    backendInitialized = true;
+                } else {
+                    console.warn(`⚠️ Backend mismatch: requested webgl, got ${actualBackend}`);
+                    throw new Error('WebGL backend not selected');
+                }
             } catch (webglError) {
-                console.warn('⚠️ WebGL backend failed, trying CPU backend:', webglError);
+                console.warn('⚠️ WebGL backend failed:', webglError.message);
+
+                // Try CPU backend as fallback
                 try {
+                    console.log('Attempting CPU backend...');
                     await tf.setBackend('cpu');
                     await tf.ready();
-                    console.log('✅ Using CPU backend (fallback)');
+
+                    const actualBackend = tf.getBackend();
+                    if (actualBackend === 'cpu') {
+                        console.log('✅ Using CPU backend (fallback)');
+                        backendInitialized = true;
+                    } else {
+                        throw new Error('CPU backend not selected');
+                    }
                 } catch (cpuError) {
-                    console.error('❌ All backends failed:', cpuError);
-                    throw new Error('Failed to initialize any TensorFlow.js backend');
+                    console.error('❌ CPU backend also failed:', cpuError);
                 }
             }
 
+            if (!backendInitialized) {
+                throw new Error('Failed to initialize any TensorFlow.js backend');
+            }
+
             const backend = tf.getBackend();
-            console.log(`🚀 Loading COCO-SSD with ${this.modelBase} on ${backend} backend...`);
+            console.log(`🚀 Backend confirmed: ${backend}. Loading COCO-SSD with ${this.modelBase}...`);
 
             // Load COCO-SSD with fastest base model
             this.model = await cocoSsd.load({
