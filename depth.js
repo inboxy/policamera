@@ -19,7 +19,7 @@ class DepthPredictionManager {
 
         // Visualization settings (OPTIMIZED for performance)
         this.depthOpacity = 0.7; // Increased opacity for better visibility
-        this.colorMode = 'turbo'; // Turbo is inline-optimized in renderDepthMap
+        this.colorMode = 'distance'; // Green (near) to Red (far) - optimized for distance visualization
         this.showAvgDepth = true; // Show average depth value
 
         // Cached depth data
@@ -290,11 +290,14 @@ class DepthPredictionManager {
     /**
      * Apply color mapping to depth values
      */
-    applyColorMap(value, mode = 'turbo') {
+    applyColorMap(value, mode = 'distance') {
         // Normalize value to [0, 1]
         const normalized = value / 255;
 
         switch (mode) {
+            case 'distance':
+                return this.distanceColormap(normalized);
+
             case 'grayscale':
                 return [value, value, value];
 
@@ -308,7 +311,43 @@ class DepthPredictionManager {
                 return this.viridisColormap(normalized);
 
             default:
-                return [value, value, value];
+                return this.distanceColormap(normalized);
+        }
+    }
+
+    /**
+     * Distance colormap - Green (near) to Red (far)
+     * Optimized for depth visualization
+     */
+    distanceColormap(value) {
+        // value: 0 = close (green), 1 = far (red)
+
+        // Light green for near: RGB(144, 238, 144)
+        // Yellow-ish middle: RGB(255, 255, 0)
+        // Orange middle-far: RGB(255, 165, 0)
+        // Dark red for far: RGB(139, 0, 0)
+
+        if (value < 0.33) {
+            // Green to Yellow (near to middle-near)
+            const t = value / 0.33;
+            const r = Math.round(144 + (255 - 144) * t);
+            const g = Math.round(238 + (255 - 238) * t);
+            const b = Math.round(144 - 144 * t);
+            return [r, g, b];
+        } else if (value < 0.67) {
+            // Yellow to Orange (middle-near to middle-far)
+            const t = (value - 0.33) / 0.34;
+            const r = 255;
+            const g = Math.round(255 - (255 - 165) * t);
+            const b = 0;
+            return [r, g, b];
+        } else {
+            // Orange to Dark Red (middle-far to far)
+            const t = (value - 0.67) / 0.33;
+            const r = Math.round(255 - (255 - 139) * t);
+            const g = Math.round(165 - 165 * t);
+            const b = 0;
+            return [r, g, b];
         }
     }
 
@@ -385,10 +424,29 @@ class DepthPredictionManager {
             for (let i = 0; i < depthData.length; i++) {
                 const pixelIndex = i * 4;
                 const depthValue = depthData[i];
+                const normalized = depthValue / 255;
 
-                // Inline color mapping for turbo mode (most common) for speed
-                if (this.colorMode === 'turbo') {
-                    const normalized = depthValue / 255;
+                // Inline color mapping for distance mode (most common) for speed
+                if (this.colorMode === 'distance') {
+                    // Optimized inline distance colormap: Green (near) to Red (far)
+                    if (normalized < 0.33) {
+                        const t = normalized / 0.33;
+                        data[pixelIndex] = Math.round(144 + (255 - 144) * t);
+                        data[pixelIndex + 1] = Math.round(238 + (255 - 238) * t);
+                        data[pixelIndex + 2] = Math.round(144 - 144 * t);
+                    } else if (normalized < 0.67) {
+                        const t = (normalized - 0.33) / 0.34;
+                        data[pixelIndex] = 255;
+                        data[pixelIndex + 1] = Math.round(255 - (255 - 165) * t);
+                        data[pixelIndex + 2] = 0;
+                    } else {
+                        const t = (normalized - 0.67) / 0.33;
+                        data[pixelIndex] = Math.round(255 - (255 - 139) * t);
+                        data[pixelIndex + 1] = Math.round(165 - 165 * t);
+                        data[pixelIndex + 2] = 0;
+                    }
+                } else if (this.colorMode === 'turbo') {
+                    // Inline turbo colormap for speed
                     data[pixelIndex] = Math.round(Math.max(0, Math.min(255,
                         34.61 + normalized * (1172.33 - normalized * (10793.56 - normalized * (33300.12 - normalized * (38394.49 - normalized * 14825.05))))
                     )));
@@ -416,8 +474,9 @@ class DepthPredictionManager {
             ctx.drawImage(this.colorMapCanvas, 0, 0, width, height);
             ctx.globalAlpha = 1.0;
 
-            // Draw average depth indicator if enabled
+            // Analyze depth statistics for display
             if (this.showAvgDepth) {
+                await this.analyzeDepth(depthMap);
                 this.drawDepthStats(ctx, width, height);
             }
 
@@ -434,10 +493,14 @@ class DepthPredictionManager {
      */
     drawDepthStats(ctx, width, height) {
         const padding = 12;
+
+        // Adjust positioning and size for narrow screens to prevent overlap
+        const isNarrowScreen = width < 400;
+        const boxWidth = isNarrowScreen ? 160 : 200;
+        const boxHeight = isNarrowScreen ? 65 : 75;
+
         const x = padding;
-        const y = height - 100; // Moved up slightly to avoid overlap
-        const boxWidth = 200;
-        const boxHeight = 75;
+        const y = isNarrowScreen ? padding + 45 : padding + 50; // Top-left, avoiding "DEPTH ACTIVE" indicator
 
         // Helper function to draw rounded rectangle (polyfill for older browsers)
         const drawRoundedRect = (x, y, width, height, radius) => {
@@ -465,22 +528,26 @@ class DepthPredictionManager {
         drawRoundedRect(x, y, boxWidth, boxHeight, 8);
         ctx.stroke();
 
-        // Text
-        ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = '#1BC298'; // Turquoise color
+        // Text with responsive font sizes
+        const titleFontSize = isNarrowScreen ? 12 : 14;
+        const mainFontSize = isNarrowScreen ? 10 : 12;
+        const subFontSize = isNarrowScreen ? 9 : 11;
+
+        ctx.font = `bold ${titleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        ctx.fillStyle = '#90EE90'; // Light green color to match near objects
 
         const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
         const rangeText = `Range: ${this.minDepth.toFixed(0)}-${this.maxDepth.toFixed(0)}`;
-        const modeText = `Mode: ${this.colorMode.toUpperCase()}`;
+        const modeText = `🟢 Near → 🔴 Far`;
 
         ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
-        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.font = `${mainFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(avgText, x + 10, y + 42);
         ctx.fillText(rangeText, x + 10, y + 58);
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.font = `${subFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillText(modeText, x + 10, y + 72);
+        ctx.fillText(modeText, x + 10, isNarrowScreen ? y + 58 : y + 72);
     }
 
     /**
@@ -488,8 +555,12 @@ class DepthPredictionManager {
      */
     drawActiveIndicator(ctx, width, height) {
         const padding = 12;
-        const boxWidth = 140;
-        const boxHeight = 32;
+
+        // Adjust size for narrow screens
+        const isNarrowScreen = width < 400;
+        const boxWidth = isNarrowScreen ? 110 : 140;
+        const boxHeight = isNarrowScreen ? 28 : 32;
+
         const x = width - boxWidth - padding;
         const y = padding;
 
@@ -508,17 +579,23 @@ class DepthPredictionManager {
             ctx.closePath();
         };
 
-        // Background
-        ctx.fillStyle = 'rgba(27, 194, 152, 0.9)'; // Turquoise background
+        // Gradient background (green to red)
+        const gradient = ctx.createLinearGradient(x, y, x + boxWidth, y);
+        gradient.addColorStop(0, 'rgba(144, 238, 144, 0.9)'); // Light green
+        gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.9)'); // Yellow
+        gradient.addColorStop(1, 'rgba(139, 0, 0, 0.9)'); // Dark red
+        ctx.fillStyle = gradient;
         drawRoundedRect(x, y, boxWidth, boxHeight, 6);
         ctx.fill();
 
-        // Text
-        ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        // Text with responsive font size
+        const fontSize = isNarrowScreen ? 11 : 13;
+        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#000000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('🌊 DEPTH ACTIVE', x + boxWidth / 2, y + boxHeight / 2);
+        const text = isNarrowScreen ? '🌊 DEPTH' : '🌊 DEPTH ACTIVE';
+        ctx.fillText(text, x + boxWidth / 2, y + boxHeight / 2);
 
         // Reset text alignment
         ctx.textAlign = 'left';
@@ -529,7 +606,7 @@ class DepthPredictionManager {
      * Change color mode
      */
     setColorMode(mode) {
-        const validModes = ['grayscale', 'turbo', 'plasma', 'viridis'];
+        const validModes = ['distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
         if (validModes.includes(mode)) {
             this.colorMode = mode;
             console.log('Depth color mode:', mode);
