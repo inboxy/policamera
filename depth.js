@@ -474,8 +474,9 @@ class DepthPredictionManager {
             ctx.drawImage(this.colorMapCanvas, 0, 0, width, height);
             ctx.globalAlpha = 1.0;
 
-            // Draw average depth indicator if enabled
+            // Analyze depth statistics for display
             if (this.showAvgDepth) {
+                await this.analyzeDepth(depthMap);
                 this.drawDepthStats(ctx, width, height);
             }
 
