@@ -344,9 +344,12 @@ class DepthPredictionManager {
             const texture = this.computeTextureVariance(grayscale, width, height);
 
             // 3. Apply perspective heuristic (top of image = farther, bottom = closer)
+            // For MiDaS: low values = near (white), high values = far (black)
+            // So: bottom of image (closer) = low values, top (farther) = high values
             const perspective = new Float32Array(width * height);
             for (let y = 0; y < height; y++) {
-                const depthValue = (y / height) * 255; // Linear gradient top to bottom
+                // Inverted: top = high (far), bottom = low (near)
+                const depthValue = ((height - y) / height) * 255;
                 for (let x = 0; x < width; x++) {
                     perspective[y * width + x] = depthValue;
                 }
@@ -355,22 +358,23 @@ class DepthPredictionManager {
             // 4. Combine cues with weighted average
             const depthData = new Float32Array(width * height);
             for (let i = 0; i < depthData.length; i++) {
-                // Weights for different depth cues
-                const edgeWeight = 0.3;        // Edges indicate object boundaries
-                const textureWeight = 0.3;     // Texture detail indicates proximity
-                const perspectiveWeight = 0.4; // Perspective is strongest cue
+                // Weights for different depth cues - perspective dominates for natural depth
+                const edgeWeight = 0.15;       // Edges provide some object boundary info
+                const textureWeight = 0.15;    // Texture provides some detail
+                const perspectiveWeight = 0.7; // Perspective is primary depth cue
 
-                // Invert edges (strong edges = object boundaries = likely closer)
-                const edgeDepth = 255 - edges[i];
+                // For depth map: we want smooth gradients, not edge highlighting
+                // Use texture as additional depth cue (high texture = potential detail/foreground)
+                const textureContribution = (255 - texture[i]) * textureWeight;
 
-                // Invert texture (high detail = closer)
-                const textureDepth = 255 - texture[i];
+                // Edges should soften depth transitions, not dominate
+                const edgeContribution = (255 - edges[i]) * edgeWeight;
 
-                // Combine weighted cues
+                // Combine: perspective is primary, with subtle texture/edge modulation
                 depthData[i] =
-                    edgeDepth * edgeWeight +
-                    textureDepth * textureWeight +
-                    perspective[i] * perspectiveWeight;
+                    perspective[i] * perspectiveWeight +
+                    textureContribution +
+                    edgeContribution;
             }
 
             // Apply bilateral-like smoothing to preserve edges while smoothing regions
@@ -1052,18 +1056,13 @@ class DepthPredictionManager {
      * Render depth map as picture-in-picture overlay (top left, 15% size)
      */
     async renderPictureInPicture(ctx, depthMap, mainWidth, mainHeight) {
-        if (!depthMap) {
-            console.warn('⚠️ PiP: No depth map provided');
-            return;
-        }
+        if (!depthMap) return;
 
         const pipWidth = Math.round(mainWidth * this.pipSize);
         const pipHeight = Math.round(mainHeight * this.pipSize);
         const padding = 12;
         const x = padding;
         const y = padding;
-
-        console.log('📊 Rendering PiP:', { pipWidth, pipHeight, mainWidth, mainHeight, pipMode: this.pipMode });
 
         try {
             // Create temporary canvas for PiP depth rendering
@@ -1116,16 +1115,6 @@ class DepthPredictionManager {
         const depthWidth = depthMap.shape[1] || depthMap.shape[0];
         const depthHeight = depthMap.shape[0];
 
-        console.log('🎨 renderDepthToContext:', {
-            depthWidth,
-            depthHeight,
-            targetWidth: width,
-            targetHeight: height,
-            dataLength: depthData.length,
-            minDepth: Math.min(...depthData),
-            maxDepth: Math.max(...depthData)
-        });
-
         // Create temp canvas for color mapping
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = depthWidth;
@@ -1149,8 +1138,6 @@ class DepthPredictionManager {
         tempCtx.putImageData(imageData, 0, 0);
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(tempCanvas, 0, 0, width, height);
-
-        console.log('✅ Depth rendered to context');
     }
 
     /**
