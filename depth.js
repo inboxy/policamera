@@ -164,7 +164,7 @@ class DepthPredictionManager {
      */
     async estimateDepthSimplified(imageElement) {
         try {
-            const ctx = this.preprocessCanvas.getContext('2d');
+            const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
 
             // Draw image to preprocessing canvas at model input size
             ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
@@ -362,7 +362,7 @@ class DepthPredictionManager {
                 this.colorMapCanvas.height = height;
             }
 
-            const colorCtx = this.colorMapCanvas.getContext('2d');
+            const colorCtx = this.colorMapCanvas.getContext('2d', { willReadFrequently: true });
 
             // Get depth data
             const depthData = await depthMap.data();
