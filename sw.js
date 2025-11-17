@@ -1,19 +1,29 @@
-const CACHE_NAME = 'policamera-v2';
+const CACHE_NAME = 'policamera-v3'; // Updated for refactored modules
 const urlsToCache = [
   '/',
   '/index.html',
   '/styles.css',
-  '/app.js',
+  '/manifest.json',
+  // Core Utilities
+  '/constants.js',
+  '/utils.js',
+  '/ui-helpers.js',
+  // Data Management
   '/database.js',
-  '/qr.js',
   '/network.js',
+  // Feature Modules
+  '/qr.js',
+  '/gps-manager.js',
   '/stitch.js',
+  '/opencv-wrapper.js',
+  // AI Modules
   '/ai.js',
   '/ai-worker.js',
-  '/opencv-wrapper.js',
   '/pose.js',
   '/face.js',
-  '/manifest.json'
+  '/depth.js',
+  // Main Application
+  '/app.js'
 ];
 
 // Install event - cache resources
