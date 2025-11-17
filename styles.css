@@ -877,3 +877,32 @@ video::-webkit-media-text-track-display {
   max-width: 350px;
   min-width: 250px;
 }
+
+/* Z-Index Hierarchy (documented for maintainability)
+ * ------------------------------------------------
+ * 1     - Video container
+ * 5     - Video text tracks
+ * 10    - Detection overlays, side panels
+ * 15    - GPS overlay
+ * 20    - FAB buttons
+ * 9999  - Capture flash effect
+ * 10000 - Modals, toasts, loading indicators
+ */
+
+/* Modal and overlay z-index enforcement */
+.modal-overlay,
+[class*="modal"] {
+  z-index: 10000 !important;
+}
+
+.toast-notification {
+  z-index: 10000 !important;
+}
+
+.capture-flash {
+  z-index: 9999 !important;
+}
+
+.loading-indicator {
+  z-index: 10000 !important;
+}

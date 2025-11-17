@@ -493,10 +493,14 @@ class DepthPredictionManager {
      */
     drawDepthStats(ctx, width, height) {
         const padding = 12;
+
+        // Adjust positioning and size for narrow screens to prevent overlap
+        const isNarrowScreen = width < 400;
+        const boxWidth = isNarrowScreen ? 160 : 200;
+        const boxHeight = isNarrowScreen ? 65 : 75;
+
         const x = padding;
-        const y = height - 100; // Moved up slightly to avoid overlap
-        const boxWidth = 200;
-        const boxHeight = 75;
+        const y = isNarrowScreen ? padding + 45 : padding + 50; // Top-left, avoiding "DEPTH ACTIVE" indicator
 
         // Helper function to draw rounded rectangle (polyfill for older browsers)
         const drawRoundedRect = (x, y, width, height, radius) => {
@@ -524,8 +528,12 @@ class DepthPredictionManager {
         drawRoundedRect(x, y, boxWidth, boxHeight, 8);
         ctx.stroke();
 
-        // Text
-        ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        // Text with responsive font sizes
+        const titleFontSize = isNarrowScreen ? 12 : 14;
+        const mainFontSize = isNarrowScreen ? 10 : 12;
+        const subFontSize = isNarrowScreen ? 9 : 11;
+
+        ctx.font = `bold ${titleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#90EE90'; // Light green color to match near objects
 
         const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
@@ -533,13 +541,13 @@ class DepthPredictionManager {
         const modeText = `🟢 Near → 🔴 Far`;
 
         ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
-        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.font = `${mainFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText(avgText, x + 10, y + 42);
         ctx.fillText(rangeText, x + 10, y + 58);
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.font = `${subFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillText(modeText, x + 10, y + 72);
+        ctx.fillText(modeText, x + 10, isNarrowScreen ? y + 58 : y + 72);
     }
 
     /**
@@ -547,8 +555,12 @@ class DepthPredictionManager {
      */
     drawActiveIndicator(ctx, width, height) {
         const padding = 12;
-        const boxWidth = 140;
-        const boxHeight = 32;
+
+        // Adjust size for narrow screens
+        const isNarrowScreen = width < 400;
+        const boxWidth = isNarrowScreen ? 110 : 140;
+        const boxHeight = isNarrowScreen ? 28 : 32;
+
         const x = width - boxWidth - padding;
         const y = padding;
 
@@ -576,12 +588,14 @@ class DepthPredictionManager {
         drawRoundedRect(x, y, boxWidth, boxHeight, 6);
         ctx.fill();
 
-        // Text
-        ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        // Text with responsive font size
+        const fontSize = isNarrowScreen ? 11 : 13;
+        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.fillStyle = '#000000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('🌊 DEPTH ACTIVE', x + boxWidth / 2, y + boxHeight / 2);
+        const text = isNarrowScreen ? '🌊 DEPTH' : '🌊 DEPTH ACTIVE';
+        ctx.fillText(text, x + boxWidth / 2, y + boxHeight / 2);
 
         // Reset text alignment
         ctx.textAlign = 'left';
