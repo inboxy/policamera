@@ -192,6 +192,21 @@ class AIRecognitionManager {
                 throw new Error('COCO-SSD model not loaded');
             }
 
+            console.log('🚀 Initializing TensorFlow.js backend...');
+
+            // Set WebGL backend explicitly for better compatibility
+            // WebGPU has issues on some browsers
+            try {
+                await tf.setBackend('webgl');
+                await tf.ready();
+                console.log('✅ TensorFlow.js WebGL backend ready');
+            } catch (backendError) {
+                console.warn('⚠️ WebGL backend failed, trying CPU backend');
+                await tf.setBackend('cpu');
+                await tf.ready();
+                console.log('✅ TensorFlow.js CPU backend ready');
+            }
+
             console.log('🚀 Loading COCO-SSD with lite_mobilenet_v2 + OpenCV.js acceleration...');
 
             // Load COCO-SSD with fastest base model

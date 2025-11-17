@@ -1,4 +1,4 @@
-const CACHE_NAME = 'policamera-v1';
+const CACHE_NAME = 'policamera-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,12 +7,13 @@ const urlsToCache = [
   '/database.js',
   '/qr.js',
   '/network.js',
+  '/stitch.js',
   '/ai.js',
   '/ai-worker.js',
-  '/manifest.json',
-  'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap',
-  'https://fonts.googleapis.com/css2?family=Doto:wght@100;200;300;400;500;600;700;800;900&display=swap',
-  'https://fonts.googleapis.com/icon?family=Material+Icons'
+  '/opencv-wrapper.js',
+  '/pose.js',
+  '/face.js',
+  '/manifest.json'
 ];
 
 // Install event - cache resources
