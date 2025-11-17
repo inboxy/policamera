@@ -1052,13 +1052,18 @@ class DepthPredictionManager {
      * Render depth map as picture-in-picture overlay (top left, 15% size)
      */
     async renderPictureInPicture(ctx, depthMap, mainWidth, mainHeight) {
-        if (!depthMap) return;
+        if (!depthMap) {
+            console.warn('⚠️ PiP: No depth map provided');
+            return;
+        }
 
         const pipWidth = Math.round(mainWidth * this.pipSize);
         const pipHeight = Math.round(mainHeight * this.pipSize);
         const padding = 12;
         const x = padding;
         const y = padding;
+
+        console.log('📊 Rendering PiP:', { pipWidth, pipHeight, mainWidth, mainHeight, pipMode: this.pipMode });
 
         try {
             // Create temporary canvas for PiP depth rendering
@@ -1111,6 +1116,16 @@ class DepthPredictionManager {
         const depthWidth = depthMap.shape[1] || depthMap.shape[0];
         const depthHeight = depthMap.shape[0];
 
+        console.log('🎨 renderDepthToContext:', {
+            depthWidth,
+            depthHeight,
+            targetWidth: width,
+            targetHeight: height,
+            dataLength: depthData.length,
+            minDepth: Math.min(...depthData),
+            maxDepth: Math.max(...depthData)
+        });
+
         // Create temp canvas for color mapping
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = depthWidth;
@@ -1134,6 +1149,8 @@ class DepthPredictionManager {
         tempCtx.putImageData(imageData, 0, 0);
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(tempCanvas, 0, 0, width, height);
+
+        console.log('✅ Depth rendered to context');
     }
 
     /**

@@ -1440,7 +1440,13 @@ class PoliCameraApp {
 
         // Render depth map in PiP mode (picture-in-picture in top left)
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
+            console.log('💡 Depth enabled, checking PiP mode:', {
+                isDepthEnabled: this.isDepthPredictionEnabled,
+                hasDepthMap: !!this.currentDepthMap,
+                pipMode: depthPredictionManager.pipMode
+            });
             if (depthPredictionManager.pipMode) {
+                console.log('🎯 Calling renderPictureInPicture...');
                 // PiP mode: render small depth view in top-left corner at 15% size
                 await depthPredictionManager.renderPictureInPicture(
                     ctx,
