@@ -60,6 +60,13 @@ class PoliCameraApp {
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
 
+        // Debug: Check if depth button exists
+        if (!this.depthFab) {
+            console.error('❌ Depth FAB button not found in DOM!');
+        } else {
+            console.log('✅ Depth FAB button found:', this.depthFab);
+        }
+
         // Location elements
         this.latitudeEl = document.getElementById('latitude');
         this.longitudeEl = document.getElementById('longitude');
@@ -554,6 +561,15 @@ class PoliCameraApp {
                 this.poseFab.style.display = 'flex';
                 this.faceFab.style.display = 'flex';
                 this.depthFab.style.display = 'flex';
+                console.log('✅ All feature buttons displayed (including depth)');
+
+                // Log available managers
+                console.log('Available AI managers:', {
+                    ai: !!window.aiRecognitionManager,
+                    pose: !!window.poseEstimationManager,
+                    face: !!window.faceDetectionManager,
+                    depth: !!window.depthPredictionManager
+                });
             }
 
             // Show errors if any
@@ -737,14 +753,20 @@ class PoliCameraApp {
     }
 
     async toggleDepthPrediction() {
+        console.log('🌊 Toggle depth prediction clicked');
+
         if (!window.depthPredictionManager) {
-            this.showError('Depth prediction not available');
+            console.error('❌ Depth prediction manager not available');
+            this.showError('Depth prediction not available - manager not loaded');
             return;
         }
 
         try {
+            console.log('Initializing depth prediction...');
             const isEnabled = await depthPredictionManager.toggle();
             this.isDepthPredictionEnabled = isEnabled;
+
+            console.log('Depth prediction toggled:', isEnabled ? 'ON' : 'OFF');
 
             // Update button styling
             if (isEnabled) {
@@ -755,8 +777,8 @@ class PoliCameraApp {
                 this.showToast('Depth prediction disabled', 'layers');
             }
         } catch (error) {
-            console.error('Failed to toggle depth prediction:', error);
-            this.showError('Failed to initialize depth prediction');
+            console.error('❌ Failed to toggle depth prediction:', error);
+            this.showError('Failed to initialize depth prediction: ' + error.message);
         }
     }
 

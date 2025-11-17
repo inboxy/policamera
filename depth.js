@@ -43,7 +43,11 @@ class DepthPredictionManager {
      * Check if depth prediction is supported
      */
     isSupported() {
-        return typeof tf !== 'undefined';
+        const supported = typeof tf !== 'undefined';
+        if (!supported) {
+            console.warn('⚠️ TensorFlow.js not yet available for depth prediction');
+        }
+        return supported;
     }
 
     /**
@@ -519,4 +523,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = depthPredictionManager;
 } else {
     window.depthPredictionManager = depthPredictionManager;
+    console.log('✅ Depth prediction manager ready (singleton created)');
 }
