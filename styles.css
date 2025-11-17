@@ -536,6 +536,21 @@ body {
   box-shadow: 0 0 20px var(--md-sys-color-error);
 }
 
+/* Depth FAB */
+.depth-fab {
+  bottom: 392px;
+  right: 24px;
+  background-color: #1E88E5;
+  color: #FFFFFF;
+  transition: all 0.3s ease;
+}
+
+.depth-fab.active {
+  background-color: #0D47A1;
+  color: var(--md-sys-color-on-error);
+  box-shadow: 0 0 20px var(--md-sys-color-error);
+}
+
 /* Settings FAB */
 .settings-fab {
   top: 24px;
