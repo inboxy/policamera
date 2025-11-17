@@ -115,18 +115,27 @@
         </button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
-    <script src="database.js"></script>
-    <script src="qr.js"></script>
-    <script src="network.js"></script>
-    <script src="stitch.js"></script>
-    <script src="ai.js"></script>
-    <script src="pose.js"></script>
-    <script src="face.js"></script>
-    <script src="depth.js"></script>
-    <script src="app.js"></script>
+    <!-- Core TensorFlow.js - load first, async -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js" async></script>
+
+    <!-- AI Models - defer to load after DOM, preload for faster fetch -->
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js">
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js">
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js">
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" defer></script>
+
+    <!-- App scripts - defer for faster page load -->
+    <script src="database.js" defer></script>
+    <script src="qr.js" defer></script>
+    <script src="network.js" defer></script>
+    <script src="stitch.js" defer></script>
+    <script src="ai.js" defer></script>
+    <script src="pose.js" defer></script>
+    <script src="face.js" defer></script>
+    <script src="depth.js" defer></script>
+    <script src="app.js" defer></script>
 </body>
 </html>

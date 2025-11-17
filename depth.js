@@ -9,14 +9,14 @@ class DepthPredictionManager {
         this.isLoading = false;
         this.isEnabled = false;
 
-        // Performance settings
-        this.inputSize = 256; // MiDaS expects 256x256 input
-        this.targetFrameTime = 1000 / 15; // 15 FPS for depth prediction (slower than detection)
+        // Performance settings - OPTIMIZED for real-time
+        this.inputSize = 128; // Reduced from 256 for 4x faster processing
+        this.targetFrameTime = 1000 / 10; // 10 FPS for depth (even more conservative)
         this.lastProcessTime = 0;
 
-        // Visualization settings
-        this.depthOpacity = 0.6; // Opacity of depth overlay
-        this.colorMode = 'turbo'; // Color scheme: 'grayscale', 'turbo', 'plasma', 'viridis'
+        // Visualization settings (OPTIMIZED for performance)
+        this.depthOpacity = 0.5; // Reduced opacity for faster blending
+        this.colorMode = 'turbo'; // Turbo is inline-optimized in renderDepthMap
         this.showAvgDepth = true; // Show average depth value
 
         // Cached depth data
@@ -28,6 +28,11 @@ class DepthPredictionManager {
         // Canvas pooling for better memory management
         this.preprocessCanvas = null;
         this.colorMapCanvas = null;
+
+        // Cached ImageData for rendering optimization
+        this.cachedImageData = null;
+        this.cachedDepthWidth = 0;
+        this.cachedDepthHeight = 0;
 
         // Model URL - Using a publicly available MiDaS TFLite model
         // Note: You'll need to host this model file or use a CDN
@@ -42,7 +47,7 @@ class DepthPredictionManager {
     }
 
     /**
-     * Initialize the depth prediction model
+     * Initialize the depth prediction model (LAZY LOADED)
      */
     async initializeModel() {
         if (this.isModelLoaded || this.isLoading) {
@@ -56,10 +61,15 @@ class DepthPredictionManager {
         }
 
         this.isLoading = true;
-        console.log('🌊 Loading depth prediction model...');
+        console.log('🌊 Loading depth prediction model (lazy init)...');
 
         try {
             // Wait for TensorFlow.js to be ready (use existing backend)
+            // This might wait if TF.js is still loading
+            while (typeof tf === 'undefined') {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
             await tf.ready();
             const backend = tf.getBackend();
             console.log(`Using ${backend} backend for depth prediction`);
@@ -70,7 +80,7 @@ class DepthPredictionManager {
             console.log('⚠️ Note: Using simplified depth estimation approach');
             console.log('For production, integrate actual MiDaS TFLite model');
 
-            // Initialize preprocessing canvas
+            // Initialize preprocessing canvas (only when needed)
             this.preprocessCanvas = document.createElement('canvas');
             this.preprocessCanvas.width = this.inputSize;
             this.preprocessCanvas.height = this.inputSize;
@@ -81,7 +91,7 @@ class DepthPredictionManager {
             this.isModelLoaded = true;
             this.isLoading = false;
 
-            console.log('✅ Depth prediction initialized');
+            console.log('✅ Depth prediction initialized (lazy loaded in ' + performance.now() + 'ms)');
             return true;
 
         } catch (error) {
@@ -174,8 +184,8 @@ class DepthPredictionManager {
                 depthData[pixelIndex] = 255 - brightness;
             }
 
-            // Apply simple blur for smoothing
-            const blurred = this.applyBoxBlur(depthData, this.inputSize, this.inputSize, 3);
+            // Apply simple blur for smoothing (reduced radius for speed)
+            const blurred = this.applyBoxBlur(depthData, this.inputSize, this.inputSize, 2);
 
             // Create TensorFlow.js tensor from the depth data
             const depthTensor = tf.tensor2d(blurred, [this.inputSize, this.inputSize]);
@@ -189,29 +199,45 @@ class DepthPredictionManager {
     }
 
     /**
-     * Apply simple box blur for smoothing depth map
+     * Apply separable box blur for smoothing depth map (OPTIMIZED)
+     * Uses two 1D passes instead of 2D kernel for O(n*radius) instead of O(n*radius²)
      */
     applyBoxBlur(data, width, height, radius) {
+        // Use separable filter: horizontal pass then vertical pass
+        const temp = new Float32Array(data.length);
         const result = new Float32Array(data.length);
-        const kernelSize = radius * 2 + 1;
-        const kernelArea = kernelSize * kernelSize;
 
+        // Horizontal pass
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 let sum = 0;
                 let count = 0;
 
-                // Sample kernel area
-                for (let ky = -radius; ky <= radius; ky++) {
-                    for (let kx = -radius; kx <= radius; kx++) {
-                        const px = x + kx;
-                        const py = y + ky;
+                // Sample horizontal kernel
+                for (let kx = -radius; kx <= radius; kx++) {
+                    const px = x + kx;
+                    if (px >= 0 && px < width) {
+                        sum += data[y * width + px];
+                        count++;
+                    }
+                }
 
-                        // Check bounds
-                        if (px >= 0 && px < width && py >= 0 && py < height) {
-                            sum += data[py * width + px];
-                            count++;
-                        }
+                temp[y * width + x] = sum / count;
+            }
+        }
+
+        // Vertical pass on horizontal-blurred data
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let sum = 0;
+                let count = 0;
+
+                // Sample vertical kernel
+                for (let ky = -radius; ky <= radius; ky++) {
+                    const py = y + ky;
+                    if (py >= 0 && py < height) {
+                        sum += temp[py * width + x];
+                        count++;
                     }
                 }
 
@@ -317,7 +343,7 @@ class DepthPredictionManager {
     }
 
     /**
-     * Render depth map to canvas with color mapping
+     * Render depth map to canvas with color mapping (OPTIMIZED)
      */
     async renderDepthMap(ctx, depthMap, width, height, opacity = 0.6) {
         if (!depthMap) return;
@@ -336,18 +362,43 @@ class DepthPredictionManager {
             const depthWidth = depthMap.shape[1];
             const depthHeight = depthMap.shape[0];
 
-            // Create ImageData for depth visualization
-            const imageData = colorCtx.createImageData(depthWidth, depthHeight);
+            // Create or reuse ImageData (OPTIMIZATION)
+            if (!this.cachedImageData ||
+                this.cachedDepthWidth !== depthWidth ||
+                this.cachedDepthHeight !== depthHeight) {
+                this.cachedImageData = colorCtx.createImageData(depthWidth, depthHeight);
+                this.cachedDepthWidth = depthWidth;
+                this.cachedDepthHeight = depthHeight;
+            }
 
-            // Apply color mapping
+            const imageData = this.cachedImageData;
+            const data = imageData.data;
+
+            // Apply color mapping (optimized with direct array access)
             for (let i = 0; i < depthData.length; i++) {
                 const pixelIndex = i * 4;
-                const [r, g, b] = this.applyColorMap(depthData[i], this.colorMode);
+                const depthValue = depthData[i];
 
-                imageData.data[pixelIndex] = r;
-                imageData.data[pixelIndex + 1] = g;
-                imageData.data[pixelIndex + 2] = b;
-                imageData.data[pixelIndex + 3] = 255; // Full alpha
+                // Inline color mapping for turbo mode (most common) for speed
+                if (this.colorMode === 'turbo') {
+                    const normalized = depthValue / 255;
+                    data[pixelIndex] = Math.round(Math.max(0, Math.min(255,
+                        34.61 + normalized * (1172.33 - normalized * (10793.56 - normalized * (33300.12 - normalized * (38394.49 - normalized * 14825.05))))
+                    )));
+                    data[pixelIndex + 1] = Math.round(Math.max(0, Math.min(255,
+                        23.31 + normalized * (557.33 + normalized * (1225.33 - normalized * (3574.96 - normalized * (1073.77 + normalized * 707.56))))
+                    )));
+                    data[pixelIndex + 2] = Math.round(Math.max(0, Math.min(255,
+                        27.2 + normalized * (3211.1 - normalized * (15327.97 - normalized * (27814.0 - normalized * (22569.18 - normalized * 6838.66))))
+                    )));
+                } else {
+                    // Fallback to method call for other modes
+                    const [r, g, b] = this.applyColorMap(depthValue, this.colorMode);
+                    data[pixelIndex] = r;
+                    data[pixelIndex + 1] = g;
+                    data[pixelIndex + 2] = b;
+                }
+                data[pixelIndex + 3] = 255; // Full alpha
             }
 
             // Draw to color map canvas
