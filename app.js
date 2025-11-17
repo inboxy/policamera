@@ -57,6 +57,12 @@ class PoliCameraApp {
         this.detectionOverlay = document.getElementById('detectionOverlay');
         this.photosGrid = document.getElementById('photosGrid');
 
+        // Dual view elements
+        this.dualViewContainer = document.getElementById('dualViewContainer');
+        this.cameraContainer = document.getElementById('cameraContainer');
+        this.depthContainer = document.getElementById('depthContainer');
+        this.depthCanvas = document.getElementById('depthCanvas');
+
         // FAB elements
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
@@ -123,6 +129,13 @@ class PoliCameraApp {
                 this.pauseCamera();
             } else if (!document.hidden && this.stream) {
                 this.resumeCamera();
+            }
+        });
+
+        // Handle window resize to update depth canvas dimensions
+        window.addEventListener('resize', () => {
+            if (this.isDepthPredictionEnabled && depthPredictionManager?.dualViewMode) {
+                this.resizeDepthCanvas();
             }
         });
     }
@@ -719,18 +732,52 @@ class PoliCameraApp {
 
             console.log('Depth prediction toggled:', isEnabled ? 'ON' : 'OFF');
 
-            // Update button styling
+            // Enable/disable dual view mode
             if (isEnabled) {
+                // Enable dual view mode
+                depthPredictionManager.setDualViewMode(true, 'depthCanvas');
+
+                // Show depth container and update layout
+                this.depthContainer.style.display = 'block';
+                this.dualViewContainer.classList.remove('single-view');
+                this.dualViewContainer.classList.add('dual-view');
+
+                // Resize depth canvas to match container
+                this.resizeDepthCanvas();
+
+                // Update button styling
                 this.depthFab.classList.add('active');
-                this.showToast('Depth prediction enabled', 'layers');
+                this.showToast('Dual view mode enabled - Camera + Depth', 'layers');
             } else {
+                // Disable dual view mode
+                depthPredictionManager.setDualViewMode(false);
+
+                // Hide depth container and update layout
+                this.depthContainer.style.display = 'none';
+                this.dualViewContainer.classList.remove('dual-view');
+                this.dualViewContainer.classList.add('single-view');
+
+                // Update button styling
                 this.depthFab.classList.remove('active');
-                this.showToast('Depth prediction disabled', 'layers');
+                this.showToast('Dual view mode disabled', 'layers');
             }
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
             this.showError('Failed to initialize depth prediction: ' + error.message);
         }
+    }
+
+    /**
+     * Resize depth canvas to match its container dimensions
+     */
+    resizeDepthCanvas() {
+        if (!this.depthCanvas || !this.depthContainer) return;
+
+        const rect = this.depthContainer.getBoundingClientRect();
+        this.depthCanvas.width = rect.width;
+        this.depthCanvas.height = rect.height;
+
+        console.log(`📐 Depth canvas resized to ${rect.width}x${rect.height}`);
     }
 
     /**
@@ -1404,15 +1451,21 @@ class PoliCameraApp {
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
 
-        // Draw depth map first (as background layer) if enabled
+        // Render depth map (to dedicated canvas in dual view mode, or as overlay)
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
-            depthPredictionManager.renderDepthMap(
-                ctx,
-                this.currentDepthMap,
-                this.detectionOverlay.width,
-                this.detectionOverlay.height,
-                depthPredictionManager.depthOpacity
-            );
+            if (depthPredictionManager.dualViewMode && this.depthCanvas) {
+                // Dual view mode: render to dedicated canvas
+                depthPredictionManager.renderDepthMapToCanvas(this.currentDepthMap, this.depthCanvas);
+            } else {
+                // Overlay mode: render to detection overlay canvas
+                depthPredictionManager.renderDepthMap(
+                    ctx,
+                    this.currentDepthMap,
+                    this.detectionOverlay.width,
+                    this.detectionOverlay.height,
+                    depthPredictionManager.depthOpacity
+                );
+            }
         }
 
         // Draw "AI Active" indicator in corner when no detections, poses, or faces
