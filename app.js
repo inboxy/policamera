@@ -1422,7 +1422,7 @@ class PoliCameraApp {
         }
     }
 
-    drawRealtimeDetections(detections) {
+    async drawRealtimeDetections(detections) {
         if (!this.detectionOverlay || !detections) return;
 
         const ctx = this.detectionOverlay.getContext('2d');
@@ -1442,7 +1442,7 @@ class PoliCameraApp {
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
             if (depthPredictionManager.pipMode) {
                 // PiP mode: render small depth view in top-left corner at 15% size
-                depthPredictionManager.renderPictureInPicture(
+                await depthPredictionManager.renderPictureInPicture(
                     ctx,
                     this.currentDepthMap,
                     this.detectionOverlay.width,

@@ -1051,7 +1051,7 @@ class DepthPredictionManager {
     /**
      * Render depth map as picture-in-picture overlay (top left, 15% size)
      */
-    renderPictureInPicture(ctx, depthMap, mainWidth, mainHeight) {
+    async renderPictureInPicture(ctx, depthMap, mainWidth, mainHeight) {
         if (!depthMap) return;
 
         const pipWidth = Math.round(mainWidth * this.pipSize);
@@ -1071,7 +1071,7 @@ class DepthPredictionManager {
             const pipCtx = this.pipCanvas.getContext('2d');
 
             // Render depth to PiP canvas (without stats/indicators)
-            this.renderDepthToContext(pipCtx, depthMap, pipWidth, pipHeight, false);
+            await this.renderDepthToContext(pipCtx, depthMap, pipWidth, pipHeight, false);
 
             // Draw PiP to main canvas with border
             ctx.save();
