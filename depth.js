@@ -59,21 +59,12 @@ class DepthPredictionManager {
         console.log('🌊 Loading depth prediction model...');
 
         try {
-            // Set WASM path for TFLite
-            await tf.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.10.0/dist/');
+            // Wait for TensorFlow.js to be ready (use existing backend)
+            await tf.ready();
+            const backend = tf.getBackend();
+            console.log(`Using ${backend} backend for depth prediction`);
 
-            // Try to use WASM backend for better performance
-            try {
-                await tf.setBackend('wasm');
-                await tf.ready();
-                console.log('Using WASM backend for depth prediction');
-            } catch (e) {
-                console.warn('WASM backend not available, falling back to WebGL');
-                await tf.setBackend('webgl');
-                await tf.ready();
-            }
-
-            // For now, we'll use a custom approach with MobileNetV2 as a depth estimator
+            // For now, we'll use a custom approach with edge detection
             // A proper implementation would load the actual MiDaS TFLite model
             // This is a placeholder that demonstrates the structure
             console.log('⚠️ Note: Using simplified depth estimation approach');
@@ -118,29 +109,6 @@ class DepthPredictionManager {
     }
 
     /**
-     * Preprocess image for depth prediction
-     */
-    preprocessImage(imageElement) {
-        const ctx = this.preprocessCanvas.getContext('2d');
-
-        // Draw image to preprocessing canvas at model input size
-        ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
-
-        // Convert to tensor and normalize
-        const imageTensor = tf.browser.fromPixels(this.preprocessCanvas)
-            .toFloat()
-            .div(255.0); // Normalize to [0, 1]
-
-        // Add batch dimension
-        const batchedTensor = imageTensor.expandDims(0);
-
-        // Cleanup
-        imageTensor.dispose();
-
-        return batchedTensor;
-    }
-
-    /**
      * Predict depth from image (simplified version)
      * In production, this would use actual MiDaS model
      */
@@ -159,15 +127,8 @@ class DepthPredictionManager {
         }
 
         try {
-            // Preprocess image
-            const inputTensor = this.preprocessImage(imageElement);
-
-            // Simplified depth estimation using edge detection and gradient analysis
-            // In production, replace this with actual MiDaS model inference
-            const depthMap = await this.estimateDepthSimplified(inputTensor);
-
-            // Cleanup
-            inputTensor.dispose();
+            // Use canvas-based depth estimation (no TensorFlow.js required)
+            const depthMap = await this.estimateDepthSimplified(imageElement);
 
             // Cache result
             this.lastDepthMap = depthMap;
@@ -181,56 +142,84 @@ class DepthPredictionManager {
     }
 
     /**
-     * Simplified depth estimation (placeholder for actual MiDaS)
-     * This creates a depth-like effect using image gradients
+     * Simplified depth estimation using canvas operations (placeholder for actual MiDaS)
+     * This creates a depth-like effect using brightness and edge analysis
      */
-    async estimateDepthSimplified(inputTensor) {
-        return tf.tidy(() => {
-            // Convert to grayscale
-            const rgb = inputTensor.squeeze();
-            const grayscale = rgb.mean(-1, true);
+    async estimateDepthSimplified(imageElement) {
+        try {
+            const ctx = this.preprocessCanvas.getContext('2d');
 
-            // Apply Sobel edge detection for depth-like effect
-            const sobelX = tf.tensor2d([
-                [-1, 0, 1],
-                [-2, 0, 2],
-                [-1, 0, 1]
-            ], [3, 3]).expandDims(2).expandDims(3);
+            // Draw image to preprocessing canvas at model input size
+            ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
 
-            const sobelY = tf.tensor2d([
-                [-1, -2, -1],
-                [0, 0, 0],
-                [1, 2, 1]
-            ], [3, 3]).expandDims(2).expandDims(3);
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, this.inputSize, this.inputSize);
+            const data = imageData.data;
 
-            // Expand grayscale for convolution
-            const gray4d = grayscale.expandDims(0).expandDims(3);
+            // Create depth map using brightness-based estimation
+            // Brighter areas are assumed to be closer (simple heuristic)
+            const depthData = new Float32Array(this.inputSize * this.inputSize);
 
-            // Apply edge detection
-            const gradX = tf.conv2d(gray4d, sobelX, 1, 'same');
-            const gradY = tf.conv2d(gray4d, sobelY, 1, 'same');
+            for (let i = 0; i < data.length; i += 4) {
+                const pixelIndex = i / 4;
 
-            // Combine gradients
-            const gradient = tf.sqrt(
-                tf.add(tf.square(gradX), tf.square(gradY))
-            ).squeeze();
+                // Calculate brightness (luminance)
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
 
-            // Invert and normalize to create depth-like map
-            const depthLike = tf.sub(1.0, gradient);
+                // Simple depth heuristic: invert brightness for depth-like effect
+                // Darker areas = farther, brighter areas = closer
+                depthData[pixelIndex] = 255 - brightness;
+            }
 
-            // Apply Gaussian blur for smoother depth map
-            const blurred = tf.avgPool(
-                depthLike.expandDims(0).expandDims(3),
-                [5, 5],
-                1,
-                'same'
-            ).squeeze();
+            // Apply simple blur for smoothing
+            const blurred = this.applyBoxBlur(depthData, this.inputSize, this.inputSize, 3);
 
-            // Normalize to [0, 255] range
-            const normalized = tf.mul(blurred, 255);
+            // Create TensorFlow.js tensor from the depth data
+            const depthTensor = tf.tensor2d(blurred, [this.inputSize, this.inputSize]);
 
-            return normalized;
-        });
+            return depthTensor;
+
+        } catch (error) {
+            console.error('Simplified depth estimation failed:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Apply simple box blur for smoothing depth map
+     */
+    applyBoxBlur(data, width, height, radius) {
+        const result = new Float32Array(data.length);
+        const kernelSize = radius * 2 + 1;
+        const kernelArea = kernelSize * kernelSize;
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let sum = 0;
+                let count = 0;
+
+                // Sample kernel area
+                for (let ky = -radius; ky <= radius; ky++) {
+                    for (let kx = -radius; kx <= radius; kx++) {
+                        const px = x + kx;
+                        const py = y + ky;
+
+                        // Check bounds
+                        if (px >= 0 && px < width && py >= 0 && py < height) {
+                            sum += data[py * width + px];
+                            count++;
+                        }
+                    }
+                }
+
+                result[y * width + x] = sum / count;
+            }
+        }
+
+        return result;
     }
 
     /**
