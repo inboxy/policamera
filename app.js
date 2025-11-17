@@ -1,29 +1,39 @@
 class PoliCameraApp {
     constructor() {
+        // Camera & Media
         this.stream = null;
         this.capturedPhotos = [];
-        this.isLocationWatching = false;
-        this.locationWatchId = null;
-        this.vttTrack = null;
-        this.vttCues = [];
-        this.startTime = null;
-        this.currentVTTUrl = null;
-        this.userId = null;
+        this.selectedPhotos = new Set();
+        this.imageStitcher = null;
+
+        // Detection state
         this.detectionInterval = null;
         this.isDetectionRunning = false;
-        this.imageStitcher = null;
-        this.selectedPhotos = new Set();
         this.hasLoggedFirstDetection = false;
         this.hasLoggedDetectionError = false;
-        this.appVersion = '1.0.0'; // Default version
+
+        // AI features state
         this.isPoseEstimationEnabled = false;
         this.currentPoses = [];
         this.isFaceDetectionEnabled = false;
         this.currentFaces = [];
         this.isDepthPredictionEnabled = false;
         this.currentDepthMap = null;
-        this.isGPSMinimized = false;
 
+        // VTT tracking
+        this.vttTrack = null;
+        this.vttCues = [];
+        this.startTime = null;
+        this.currentVTTUrl = null;
+
+        // User identification
+        this.userId = null;
+        this.appVersion = AppConstants.APP_VERSION;
+
+        // GPS Manager (using new refactored class)
+        this.gpsManager = new GPSManager();
+
+        // Initialize app
         this.initializeElements();
         this.initializeEventListeners();
         this.initializeServiceWorker();
@@ -34,13 +44,11 @@ class PoliCameraApp {
         this.initializeDatabase();
         this.initializeStitcher();
         this.initializePullToRefresh();
+        this.initializeGPSManager();
         this.loadVersion();
 
         // Auto-start camera and GPS when page loads
         this.autoStart();
-
-        // Start GPS display updates
-        this.startGPSDisplayUpdates();
     }
 
     initializeElements() {
@@ -291,17 +299,13 @@ class PoliCameraApp {
         });
     }
 
+    /**
+     * Update device orientation data
+     * @param {DeviceOrientationEvent} event - Orientation event
+     */
     updateOrientation(event) {
-        const alpha = event.alpha ? Math.round(event.alpha) : 0;
-        const beta = event.beta ? Math.round(event.beta) : 0;
-        const gamma = event.gamma ? Math.round(event.gamma) : 0;
-
-        this.alphaEl.textContent = `${alpha}°`;
-        this.betaEl.textContent = `${beta}°`;
-        this.gammaEl.textContent = `${gamma}°`;
-
-        // Update permanent GPS display
-        this.updateGPSDisplay();
+        // Delegate to GPS Manager
+        this.gpsManager.updateOrientation(event);
 
         // Update VTT cue with orientation data
         this.updateVTTCue();
@@ -319,16 +323,58 @@ class PoliCameraApp {
         this.startTime = Date.now();
     }
 
+    /**
+     * Initialize GPS Manager
+     */
+    initializeGPSManager() {
+        this.gpsManager.initialize({
+            latitude: 'latitude',
+            longitude: 'longitude',
+            altitude: 'altitude',
+            accuracy: 'accuracy',
+            alpha: 'alpha',
+            beta: 'beta',
+            gamma: 'gamma',
+            gpsLatDisplay: 'gpsLatDisplay',
+            gpsLonDisplay: 'gpsLonDisplay',
+            gpsUserIdDisplay: 'gpsUserIdDisplay',
+            gpsAltDisplay: 'gpsAltDisplay',
+            gpsAccDisplay: 'gpsAccDisplay',
+            gpsTimeDisplay: 'gpsTimeDisplay',
+            gpsHeadingDisplay: 'gpsHeadingDisplay',
+            gpsNetworkDisplay: 'gpsNetworkDisplay',
+            gpsVersionDisplay: 'gpsVersionDisplay',
+            gpsOverlay: 'gpsOverlay',
+            gpsToggle: 'gpsToggle'
+        });
+
+        // Set user ID and version
+        this.gpsManager.setUserId(this.userId);
+        this.gpsManager.setVersion(this.appVersion);
+
+        // Register callback for VTT updates
+        this.gpsManager.addPositionCallback(() => {
+            this.updateVTTCue();
+        });
+    }
+
+    /**
+     * Initialize user ID from cookie or generate new one
+     */
     initializeUserId() {
         // Try to get existing user ID from cookie
-        this.userId = this.getCookie('policamera-userid');
+        this.userId = Utils.getCookie(AppConstants.USER_ID_COOKIE_NAME);
 
         if (!this.userId) {
-            // Generate new 12-character user ID using custom generator
-            this.userId = this.generateUserId(12);
+            // Generate new user ID
+            this.userId = Utils.generateUserId(AppConstants.USER_ID_LENGTH);
 
-            // Store in cookie with 1 year expiration
-            this.setCookie('policamera-userid', this.userId, 365);
+            // Store in cookie
+            Utils.setCookie(
+                AppConstants.USER_ID_COOKIE_NAME,
+                this.userId,
+                AppConstants.USER_ID_COOKIE_EXPIRY_DAYS
+            );
 
             console.log('Generated new user ID:', this.userId);
         } else {
@@ -336,51 +382,10 @@ class PoliCameraApp {
         }
     }
 
-    setCookie(name, value, days) {
-        const date = new Date();
-        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-        const expires = `expires=${date.toUTCString()}`;
-        document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict`;
-    }
-
-    getCookie(name) {
-        const nameEQ = name + "=";
-        const cookies = document.cookie.split(';');
-
-        for (let i = 0; i < cookies.length; i++) {
-            let cookie = cookies[i];
-            while (cookie.charAt(0) === ' ') {
-                cookie = cookie.substring(1, cookie.length);
-            }
-            if (cookie.indexOf(nameEQ) === 0) {
-                return cookie.substring(nameEQ.length, cookie.length);
-            }
-        }
-        return null;
-    }
-
-    generateUserId(length) {
-        // Custom secure ID generator using crypto.getRandomValues
-        const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-        const array = new Uint8Array(length);
-
-        if (crypto && crypto.getRandomValues) {
-            crypto.getRandomValues(array);
-        } else {
-            // Fallback for older browsers
-            for (let i = 0; i < length; i++) {
-                array[i] = Math.floor(Math.random() * 256);
-            }
-        }
-
-        let result = '';
-        for (let i = 0; i < length; i++) {
-            result += chars[array[i] % chars.length];
-        }
-
-        return result;
-    }
-
+    /**
+     * Get current user ID
+     * @returns {string} User ID
+     */
     getUserId() {
         return this.userId;
     }
@@ -407,33 +412,35 @@ class PoliCameraApp {
         return vttContent;
     }
 
+    /**
+     * Format time in WebVTT format
+     * @param {number} milliseconds - Time in milliseconds
+     * @returns {string} Formatted time string
+     */
     formatTime(milliseconds) {
-        const totalSeconds = Math.floor(milliseconds / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const ms = milliseconds % 1000;
-
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        return Utils.formatVTTTime(milliseconds);
     }
 
+    /**
+     * Update WebVTT cue with current position data
+     */
     updateVTTCue() {
         if (!this.startTime || !this.stream) return;
 
         const currentTime = Date.now() - this.startTime;
-        const location = this.getCurrentLocationData();
-        const orientation = this.getCurrentOrientationData();
+        const location = this.gpsManager.getCurrentLocation();
+        const orientation = this.gpsManager.getCurrentOrientation();
         const network = networkManager.getNetworkInfo();
 
-        // Create cue text with position data
-        const cueText = this.formatCueText(location, orientation, network);
+        // Create cue text with position data using utility function
+        const cueText = Utils.formatCueText(location, orientation, network);
 
-        // Add new cue (replace last one if within 500ms for faster updates)
+        // Add new cue (replace last one if within threshold for faster updates)
         if (this.vttCues.length > 0) {
             const lastCue = this.vttCues[this.vttCues.length - 1];
-            if (currentTime - lastCue.startTime < 500) {
+            if (currentTime - lastCue.startTime < AppConstants.VTT.UPDATE_THRESHOLD) {
                 // Update existing cue
-                lastCue.endTime = currentTime + 500;
+                lastCue.endTime = currentTime + AppConstants.VTT.CUE_DURATION;
                 lastCue.text = cueText;
             } else {
                 // Add new cue
@@ -448,72 +455,58 @@ class PoliCameraApp {
         this.updateVTTTrack();
     }
 
+    /**
+     * Add a new VTT cue
+     * @param {number} startTime - Start time in milliseconds
+     * @param {string} text - Cue text
+     */
     addVTTCue(startTime, text) {
         const cue = {
             startTime: startTime,
-            endTime: startTime + 500, // 500ms duration for faster updates
+            endTime: startTime + AppConstants.VTT.CUE_DURATION,
             text: text
         };
 
         this.vttCues.push(cue);
 
-        // Keep only last 100 cues to prevent memory issues
-        if (this.vttCues.length > 100) {
+        // Keep only last N cues to prevent memory issues
+        if (this.vttCues.length > AppConstants.VTT.MAX_CUES) {
             this.vttCues.shift();
         }
     }
 
-    formatCueText(location, orientation, network) {
-        let text = '';
-
-        if (location.latitude !== '--') {
-            // Primary GPS coordinates - make them prominent
-            text += `GPS COORDINATES\n`;
-            text += `LAT: ${location.latitude}\n`;
-            text += `LON: ${location.longitude}\n`;
-
-            // Secondary GPS info
-            if (location.altitude !== '-- m') {
-                text += `ALT: ${location.altitude}\n`;
-            }
-            text += `ACC: ${location.accuracy}\n`;
-        } else {
-            text += `GPS: SEARCHING...\n`;
-        }
-
-        // Add timestamp
-        const now = new Date();
-        text += `TIME: ${now.toLocaleTimeString()}\n`;
-
-        // Add orientation data if available
-        if (orientation.alpha !== '0°') {
-            text += `HEADING: ${orientation.alpha}\n`;
-        }
-
-        // Network status
-        text += `${network.online ? 'ONLINE' : 'OFFLINE'}`;
-        if (network.effectiveType && network.effectiveType !== 'unknown') {
-            text += ` (${network.effectiveType.toUpperCase()})`;
-        }
-
-        return text.trim();
-    }
-
+    /**
+     * Get current location data (deprecated - use gpsManager instead)
+     * @deprecated Use gpsManager.getCurrentLocation() instead
+     * @returns {Object} Current location data
+     */
     getCurrentLocationData() {
-        return {
-            latitude: this.latitudeEl.textContent,
-            longitude: this.longitudeEl.textContent,
-            altitude: this.altitudeEl.textContent,
-            accuracy: this.accuracyEl.textContent
-        };
+        return this.gpsManager.getCurrentLocation();
     }
 
+    /**
+     * Get current orientation data (deprecated - use gpsManager instead)
+     * @deprecated Use gpsManager.getCurrentOrientation() instead
+     * @returns {Object} Current orientation data
+     */
     getCurrentOrientationData() {
-        return {
-            alpha: this.alphaEl.textContent,
-            beta: this.betaEl.textContent,
-            gamma: this.gammaEl.textContent
-        };
+        return this.gpsManager.getCurrentOrientation();
+    }
+
+    /**
+     * Get current location (shorthand for getCurrentLocationData)
+     * @returns {Object} Current location data
+     */
+    getCurrentLocation() {
+        return this.gpsManager.getCurrentLocation();
+    }
+
+    /**
+     * Get current orientation (shorthand for getCurrentOrientationData)
+     * @returns {Object} Current orientation data
+     */
+    getCurrentOrientation() {
+        return this.gpsManager.getCurrentOrientation();
     }
 
     updateVTTTrack() {
@@ -530,11 +523,14 @@ class PoliCameraApp {
         this.currentVTTUrl = url;
     }
 
+    /**
+     * Auto-start camera and GPS on page load
+     */
     async autoStart() {
         // Small delay to ensure DOM is fully ready
         setTimeout(() => {
             this.startCamera();
-        }, 100);
+        }, AppConstants.TIMING.AUTO_START_DELAY);
     }
 
     async startCamera() {
@@ -608,60 +604,15 @@ class PoliCameraApp {
         return true;
     }
 
+    /**
+     * Initialize location tracking (now uses GPSManager)
+     * @returns {Promise<boolean>} Success status
+     */
     async initializeLocation() {
-        if (!navigator.geolocation) {
-            throw new Error('Geolocation not supported');
-        }
-
-        return new Promise((resolve, reject) => {
-            const options = {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 60000
-            };
-
-            // Start watching location
-            this.locationWatchId = navigator.geolocation.watchPosition(
-                (position) => {
-                    this.updateLocation(position);
-                    if (!this.isLocationWatching) {
-                        this.isLocationWatching = true;
-                        resolve(true);
-                    }
-                },
-                (error) => {
-                    if (!this.isLocationWatching) {
-                        reject(new Error(this.getLocationErrorMessage(error)));
-                    }
-                },
-                options
-            );
-
-            // Also try to get immediate position
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    this.updateLocation(position);
-                    if (!this.isLocationWatching) {
-                        this.isLocationWatching = true;
-                        resolve(true);
-                    }
-                },
-                () => {}, // Ignore errors here, watchPosition will handle them
-                options
-            );
-        });
-    }
-
-    getLocationErrorMessage(error) {
-        switch (error.code) {
-            case error.PERMISSION_DENIED:
-                return 'Permission denied';
-            case error.POSITION_UNAVAILABLE:
-                return 'Position unavailable';
-            case error.TIMEOUT:
-                return 'Request timeout';
-            default:
-                return 'Unknown error';
+        try {
+            return await this.gpsManager.start();
+        } catch (error) {
+            throw error;
         }
     }
 
@@ -782,14 +733,11 @@ class PoliCameraApp {
         }
     }
 
+    /**
+     * Toggle GPS overlay (minimize/maximize) - delegated to GPS Manager
+     */
     toggleGPSOverlay() {
-        this.isGPSMinimized = !this.isGPSMinimized;
-
-        if (this.isGPSMinimized) {
-            this.gpsOverlay.classList.add('minimized');
-        } else {
-            this.gpsOverlay.classList.remove('minimized');
-        }
+        this.gpsManager.toggleOverlay();
     }
 
     pauseCamera() {
@@ -919,35 +867,11 @@ class PoliCameraApp {
     }
 
 
+    /**
+     * Show capture flash effect
+     */
     showCaptureEffect() {
-        const effect = document.createElement('div');
-        effect.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0.8;
-            z-index: 9999;
-            pointer-events: none;
-            animation: captureFlash 0.2s ease-out;
-        `;
-
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes captureFlash {
-                0% { opacity: 0.8; }
-                100% { opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-        document.body.appendChild(effect);
-
-        setTimeout(() => {
-            document.body.removeChild(effect);
-            document.head.removeChild(style);
-        }, 200);
+        UIHelpers.showCaptureEffect();
     }
 
     displayPhoto(photo) {
@@ -1187,45 +1111,25 @@ class PoliCameraApp {
     }
 
 
+    /**
+     * Update location (deprecated - handled by GPS Manager)
+     * @deprecated Location updates are now handled by GPSManager
+     * @param {GeolocationPosition} position - Position data
+     */
     updateLocation(position) {
-        const { latitude, longitude, altitude, accuracy } = position.coords;
-
-        this.latitudeEl.textContent = latitude.toFixed(6);
-        this.longitudeEl.textContent = longitude.toFixed(6);
-        this.altitudeEl.textContent = altitude ? `${Math.round(altitude)} m` : '-- m';
-        this.accuracyEl.textContent = `${Math.round(accuracy)} m`;
-
-        // Update permanent GPS display
-        this.updateGPSDisplay();
-
-        // Update VTT cue with location data
-        this.updateVTTCue();
+        // This is now handled by GPSManager
+        // Kept for backward compatibility
+        console.warn('updateLocation is deprecated. GPSManager handles this now.');
     }
 
+    /**
+     * Update GPS display (deprecated - handled by GPS Manager)
+     * @deprecated GPS display updates are now handled by GPSManager
+     */
     updateGPSDisplay() {
-        // Update GPS coordinates display
-        this.gpsLatDisplayEl.textContent = this.latitudeEl.textContent;
-        this.gpsLonDisplayEl.textContent = this.longitudeEl.textContent;
-        this.gpsUserIdDisplayEl.textContent = this.userId || '--';
-        this.gpsAltDisplayEl.textContent = this.altitudeEl.textContent;
-        this.gpsAccDisplayEl.textContent = this.accuracyEl.textContent;
-
-        // Update time
-        const now = new Date();
-        this.gpsTimeDisplayEl.textContent = now.toLocaleTimeString();
-
-        // Update heading (alpha orientation)
-        this.gpsHeadingDisplayEl.textContent = this.alphaEl.textContent;
-
-        // Update network status
-        const networkInfo = networkManager.getNetworkInfo();
-        const networkText = networkInfo.online ?
-            (networkInfo.effectiveType ? networkInfo.effectiveType.toUpperCase() : 'ONLINE') :
-            'OFFLINE';
-        this.gpsNetworkDisplayEl.textContent = networkText;
-
-        // Update version
-        this.gpsVersionDisplayEl.textContent = this.appVersion;
+        // This is now handled by GPSManager
+        // Kept for backward compatibility
+        console.warn('updateGPSDisplay is deprecated. GPSManager handles this now.');
     }
 
     /**
@@ -1233,46 +1137,16 @@ class PoliCameraApp {
      */
     async loadVersion() {
         try {
-            const response = await fetch('manifest.json');
-            const manifest = await response.json();
-            if (manifest.version) {
+            const manifest = await Utils.loadManifest();
+            if (manifest && manifest.version) {
                 this.appVersion = manifest.version;
-                this.gpsVersionDisplayEl.textContent = this.appVersion;
+                this.gpsManager.setVersion(this.appVersion);
                 console.log('📱 PoliCamera version:', this.appVersion);
             }
         } catch (error) {
             console.warn('Failed to load version from manifest:', error);
             // Keep default version
         }
-    }
-
-    startGPSDisplayUpdates() {
-        // Initial update
-        this.updateGPSDisplay();
-
-        // Update every 500ms for real-time display
-        this.gpsUpdateInterval = setInterval(() => {
-            this.updateGPSDisplay();
-        }, 500);
-    }
-
-    handleLocationError(error) {
-        let message = 'Location error: ';
-        switch (error.code) {
-            case error.PERMISSION_DENIED:
-                message += 'Permission denied';
-                break;
-            case error.POSITION_UNAVAILABLE:
-                message += 'Position unavailable';
-                break;
-            case error.TIMEOUT:
-                message += 'Request timeout';
-                break;
-            default:
-                message += 'Unknown error';
-                break;
-        }
-        this.showError(message);
     }
 
     savePhotoToStorage(photo) {
@@ -1315,48 +1189,27 @@ class PoliCameraApp {
         }
     }
 
+    /**
+     * Save GPS log to database
+     */
     async saveGPSLogToDatabase() {
         try {
+            const location = this.gpsManager.getCurrentLocation();
+
             const gpsData = {
                 userId: this.userId,
-                lat: parseFloat(this.latitudeEl.textContent) || null,
-                lon: parseFloat(this.longitudeEl.textContent) || null,
-                alt: this.parseAltitude(this.altitudeEl.textContent),
-                accuracy: this.parseAccuracy(this.accuracyEl.textContent),
-                error: this.getLocationError(),
-                heading: this.parseHeading(this.alphaEl.textContent)
+                lat: parseFloat(location.latitude) || null,
+                lon: parseFloat(location.longitude) || null,
+                alt: GPSManager.parseAltitude(location.altitude),
+                accuracy: GPSManager.parseAccuracy(location.accuracy),
+                error: this.gpsManager.getLocationError(),
+                heading: GPSManager.parseHeading(this.gpsManager.getCurrentOrientation().alpha)
             };
 
             await databaseManager.storeGPSLog(gpsData);
         } catch (error) {
             console.error('Failed to save GPS log to database:', error);
         }
-    }
-
-    getLocationError() {
-        // Return error if GPS coordinates are not available
-        if (this.latitudeEl.textContent === '--' || this.longitudeEl.textContent === '--') {
-            return 'GPS coordinates not available';
-        }
-        return null;
-    }
-
-    parseAltitude(altText) {
-        if (altText === '-- m') return null;
-        const match = altText.match(/^(\d+)/);
-        return match ? parseInt(match[1]) : null;
-    }
-
-    parseAccuracy(accText) {
-        if (accText === '-- m') return null;
-        const match = accText.match(/^(\d+)/);
-        return match ? parseInt(match[1]) : null;
-    }
-
-    parseHeading(headingText) {
-        if (headingText === '0°') return null;
-        const match = headingText.match(/^(\d+)/);
-        return match ? parseInt(match[1]) : null;
     }
 
     loadPhotosFromStorage() {
@@ -1373,10 +1226,13 @@ class PoliCameraApp {
         }
     }
 
+    /**
+     * Escape HTML to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped HTML
+     */
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return UIHelpers.escapeHtml(text);
     }
 
     setupDetectionOverlay() {
@@ -1676,40 +1532,34 @@ class PoliCameraApp {
 
     /**
      * Helper function to draw rounded rectangle
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} width - Width
+     * @param {number} height - Height
+     * @param {number} radius - Border radius
      */
     drawRoundedRect(ctx, x, y, width, height, radius) {
-        ctx.beginPath();
-        ctx.moveTo(x + radius, y);
-        ctx.lineTo(x + width - radius, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-        ctx.lineTo(x + width, y + height - radius);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-        ctx.lineTo(x + radius, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-        ctx.lineTo(x, y + radius);
-        ctx.quadraticCurveTo(x, y, x + radius, y);
-        ctx.closePath();
+        UIHelpers.drawRoundedRect(ctx, x, y, width, height, radius);
     }
 
     /**
      * Convert hex color to RGBA
+     * @param {string} hex - Hex color code
+     * @param {number} alpha - Alpha value (0-1)
+     * @returns {string} RGBA color string
      */
     hexToRGBA(hex, alpha) {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        return UIHelpers.hexToRGBA(hex, alpha);
     }
 
     /**
      * Get contrasting color (black or white) for text
+     * @param {string} hexColor - Background hex color
+     * @returns {string} Contrasting color (black or white)
      */
     getContrastColor(hexColor) {
-        const r = parseInt(hexColor.slice(1, 3), 16);
-        const g = parseInt(hexColor.slice(3, 5), 16);
-        const b = parseInt(hexColor.slice(5, 7), 16);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance > 0.5 ? '#000000' : '#FFFFFF';
+        return UIHelpers.getContrastColor(hexColor);
     }
 
     /**
@@ -1815,68 +1665,21 @@ class PoliCameraApp {
         console.log('Real-time detection stopped');
     }
 
+    /**
+     * Show error message to user
+     * @param {string} message - Error message
+     */
     showError(message) {
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--md-sys-color-error);
-            color: var(--md-sys-color-on-error);
-            padding: 12px 24px;
-            border-radius: 24px;
-            z-index: 10000;
-            font-size: 14px;
-            box-shadow: var(--md-sys-elevation-level2);
-        `;
-        toast.textContent = message;
-
-        document.body.appendChild(toast);
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 4000);
+        UIHelpers.showError(message);
     }
 
+    /**
+     * Show toast notification to user
+     * @param {string} message - Toast message
+     * @param {string|null} icon - Material icon name (optional)
+     */
     showToast(message, icon = null) {
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            padding: 12px 24px;
-            border-radius: 24px;
-            z-index: 10000;
-            font-size: 14px;
-            box-shadow: var(--md-sys-elevation-level2);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        `;
-
-        if (icon) {
-            const iconEl = document.createElement('span');
-            iconEl.className = 'material-icons';
-            iconEl.style.fontSize = '20px';
-            iconEl.textContent = icon;
-            toast.appendChild(iconEl);
-        }
-
-        const textEl = document.createElement('span');
-        textEl.textContent = message;
-        toast.appendChild(textEl);
-
-        document.body.appendChild(toast);
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 2000);
+        UIHelpers.showToast(message, 'info', icon);
     }
 
     initializeStitcher() {
@@ -1988,39 +1791,43 @@ class PoliCameraApp {
         }, 5000);
     }
 
+    /**
+     * Cleanup resources before app shutdown
+     */
     cleanup() {
-        // Cleanup method for proper resource management
+        // Cleanup VTT resources
         if (this.currentVTTUrl) {
             URL.revokeObjectURL(this.currentVTTUrl);
             this.currentVTTUrl = null;
         }
+
+        // Cleanup camera stream
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
         }
-        if (this.locationWatchId) {
-            navigator.geolocation.clearWatch(this.locationWatchId);
+
+        // Cleanup GPS Manager
+        if (this.gpsManager) {
+            this.gpsManager.cleanup();
         }
-        if (this.gpsUpdateInterval) {
-            clearInterval(this.gpsUpdateInterval);
-        }
+
         // Stop real-time detection
         this.stopRealTimeDetection();
-        // Cleanup AI worker
+
+        // Cleanup AI modules
         if (window.aiRecognitionManager) {
             aiRecognitionManager.cleanup();
         }
-        // Cleanup pose estimation
         if (window.poseEstimationManager) {
             poseEstimationManager.cleanup();
         }
-        // Cleanup face detection
         if (window.faceDetectionManager) {
             faceDetectionManager.cleanup();
         }
-        // Cleanup depth prediction
         if (window.depthPredictionManager) {
             depthPredictionManager.cleanup();
         }
+
         // Cleanup current depth map if exists
         if (this.currentDepthMap) {
             this.currentDepthMap.dispose();
