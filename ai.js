@@ -192,7 +192,28 @@ class AIRecognitionManager {
                 throw new Error('COCO-SSD model not loaded');
             }
 
-            console.log('🚀 Loading COCO-SSD with lite_mobilenet_v2 for maximum speed...');
+            // CRITICAL: Initialize TensorFlow.js backend before loading models
+            console.log('🔧 Initializing TensorFlow.js backend...');
+
+            try {
+                // Try WebGL first (most compatible and fast)
+                await tf.setBackend('webgl');
+                await tf.ready();
+                console.log('✅ Using WebGL backend');
+            } catch (webglError) {
+                console.warn('⚠️ WebGL backend failed, trying CPU backend:', webglError);
+                try {
+                    await tf.setBackend('cpu');
+                    await tf.ready();
+                    console.log('✅ Using CPU backend (fallback)');
+                } catch (cpuError) {
+                    console.error('❌ All backends failed:', cpuError);
+                    throw new Error('Failed to initialize any TensorFlow.js backend');
+                }
+            }
+
+            const backend = tf.getBackend();
+            console.log(`🚀 Loading COCO-SSD with ${this.modelBase} on ${backend} backend...`);
 
             // Load COCO-SSD with fastest base model
             this.model = await cocoSsd.load({
