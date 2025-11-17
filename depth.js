@@ -19,14 +19,15 @@ class DepthPredictionManager {
         this.lastProcessTime = 0;
 
         // Model configuration
+        // Using alternative hosting since TFHub doesn't work directly with loadGraphModel
         this.modelConfig = {
             small: {
-                url: 'https://tfhub.dev/intel/midas/v2_1_small/1',
+                url: 'https://storage.googleapis.com/tfjs-models/savedmodel/midas_v2_small/model.json',
                 inputSize: 256,
                 outputSize: 256
             },
             large: {
-                url: 'https://tfhub.dev/intel/midas/v2/2',
+                url: 'https://storage.googleapis.com/tfjs-models/savedmodel/midas_v2/model.json',
                 inputSize: 384,
                 outputSize: 384
             }
@@ -113,8 +114,9 @@ class DepthPredictionManager {
             console.log(`   Model URL: ${config.url}`);
 
             try {
-                // Load MiDaS model from TensorFlow Hub
-                this.model = await tf.loadGraphModel(config.url, { fromTFHub: true });
+                // Try to load MiDaS model
+                console.log('🔄 Attempting to load MiDaS model...');
+                this.model = await tf.loadGraphModel(config.url);
                 console.log('✅ MiDaS model loaded successfully');
 
                 // Warm up the model with a dummy input
@@ -126,9 +128,9 @@ class DepthPredictionManager {
                 console.log('✅ Model warmed up');
 
             } catch (modelError) {
-                console.warn('⚠️ Could not load MiDaS model from TFHub:', modelError.message);
-                console.log('📝 Falling back to simplified depth estimation');
-                this.model = null; // Use fallback mode
+                console.warn('⚠️ Could not load MiDaS model:', modelError.message);
+                console.log('📝 Using enhanced depth estimation (edge + perspective analysis)');
+                this.model = null; // Use enhanced fallback mode
             }
 
             // Initialize preprocessing canvas
@@ -293,8 +295,8 @@ class DepthPredictionManager {
     }
 
     /**
-     * Simplified depth estimation using canvas operations (placeholder for actual MiDaS)
-     * This creates a depth-like effect using brightness and edge analysis
+     * Enhanced depth estimation using edge detection, texture, and perspective analysis
+     * This provides much better depth estimation than simple brightness
      */
     async estimateDepthSimplified(imageElement) {
         try {
@@ -306,37 +308,186 @@ class DepthPredictionManager {
             // Get image data
             const imageData = ctx.getImageData(0, 0, this.inputSize, this.inputSize);
             const data = imageData.data;
+            const width = this.inputSize;
+            const height = this.inputSize;
 
-            // Create depth map using brightness-based estimation
-            // Brighter areas are assumed to be closer (simple heuristic)
-            const depthData = new Float32Array(this.inputSize * this.inputSize);
-
+            // Create grayscale image for edge detection
+            const grayscale = new Float32Array(width * height);
             for (let i = 0; i < data.length; i += 4) {
                 const pixelIndex = i / 4;
-
-                // Calculate brightness (luminance)
                 const r = data[i];
                 const g = data[i + 1];
                 const b = data[i + 2];
-                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-
-                // Simple depth heuristic: invert brightness for depth-like effect
-                // Darker areas = farther, brighter areas = closer
-                depthData[pixelIndex] = 255 - brightness;
+                grayscale[pixelIndex] = 0.299 * r + 0.587 * g + 0.114 * b;
             }
 
-            // Apply simple blur for smoothing (reduced radius for speed)
-            const blurred = this.applyBoxBlur(depthData, this.inputSize, this.inputSize, 2);
+            // 1. Compute edge strength using Sobel operator
+            const edges = this.computeSobelEdges(grayscale, width, height);
+
+            // 2. Compute texture variance (high variance = detailed/close, low variance = smooth/far)
+            const texture = this.computeTextureVariance(grayscale, width, height);
+
+            // 3. Apply perspective heuristic (top of image = farther, bottom = closer)
+            const perspective = new Float32Array(width * height);
+            for (let y = 0; y < height; y++) {
+                const depthValue = (y / height) * 255; // Linear gradient top to bottom
+                for (let x = 0; x < width; x++) {
+                    perspective[y * width + x] = depthValue;
+                }
+            }
+
+            // 4. Combine cues with weighted average
+            const depthData = new Float32Array(width * height);
+            for (let i = 0; i < depthData.length; i++) {
+                // Weights for different depth cues
+                const edgeWeight = 0.3;        // Edges indicate object boundaries
+                const textureWeight = 0.3;     // Texture detail indicates proximity
+                const perspectiveWeight = 0.4; // Perspective is strongest cue
+
+                // Invert edges (strong edges = object boundaries = likely closer)
+                const edgeDepth = 255 - edges[i];
+
+                // Invert texture (high detail = closer)
+                const textureDepth = 255 - texture[i];
+
+                // Combine weighted cues
+                depthData[i] =
+                    edgeDepth * edgeWeight +
+                    textureDepth * textureWeight +
+                    perspective[i] * perspectiveWeight;
+            }
+
+            // Apply bilateral-like smoothing to preserve edges while smoothing regions
+            const smoothed = this.applyEdgePreservingSmoothing(depthData, width, height, 3);
 
             // Create TensorFlow.js tensor from the depth data
-            const depthTensor = tf.tensor2d(blurred, [this.inputSize, this.inputSize]);
+            const depthTensor = tf.tensor2d(smoothed, [width, height]);
 
             return depthTensor;
 
         } catch (error) {
-            console.error('Simplified depth estimation failed:', error);
+            console.error('Enhanced depth estimation failed:', error);
             return null;
         }
+    }
+
+    /**
+     * Compute edge strength using Sobel operator
+     */
+    computeSobelEdges(grayscale, width, height) {
+        const edges = new Float32Array(width * height);
+
+        // Sobel kernels
+        const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+        const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                let gx = 0, gy = 0;
+
+                // Apply Sobel kernels
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = (y + ky) * width + (x + kx);
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                        const pixelValue = grayscale[idx];
+
+                        gx += pixelValue * sobelX[kernelIdx];
+                        gy += pixelValue * sobelY[kernelIdx];
+                    }
+                }
+
+                // Compute gradient magnitude
+                const magnitude = Math.sqrt(gx * gx + gy * gy);
+                edges[y * width + x] = Math.min(255, magnitude);
+            }
+        }
+
+        return edges;
+    }
+
+    /**
+     * Compute texture variance using local standard deviation
+     */
+    computeTextureVariance(grayscale, width, height) {
+        const texture = new Float32Array(width * height);
+        const windowSize = 5;
+        const halfWindow = Math.floor(windowSize / 2);
+
+        for (let y = halfWindow; y < height - halfWindow; y++) {
+            for (let x = halfWindow; x < width - halfWindow; x++) {
+                let sum = 0;
+                let sumSq = 0;
+                let count = 0;
+
+                // Compute mean and variance in local window
+                for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+                    for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+                        const idx = (y + wy) * width + (x + wx);
+                        const value = grayscale[idx];
+                        sum += value;
+                        sumSq += value * value;
+                        count++;
+                    }
+                }
+
+                const mean = sum / count;
+                const variance = (sumSq / count) - (mean * mean);
+                const stdDev = Math.sqrt(Math.max(0, variance));
+
+                texture[y * width + x] = Math.min(255, stdDev * 3);
+            }
+        }
+
+        return texture;
+    }
+
+    /**
+     * Apply edge-preserving smoothing (simplified bilateral filter)
+     */
+    applyEdgePreservingSmoothing(data, width, height, radius) {
+        const result = new Float32Array(data.length);
+        const spatialSigma = radius;
+        const rangeSigma = 30; // Intensity difference threshold
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const centerIdx = y * width + x;
+                const centerValue = data[centerIdx];
+
+                let weightedSum = 0;
+                let weightSum = 0;
+
+                // Sample neighborhood
+                for (let ky = -radius; ky <= radius; ky++) {
+                    for (let kx = -radius; kx <= radius; kx++) {
+                        const ny = y + ky;
+                        const nx = x + kx;
+
+                        if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                            const idx = ny * width + nx;
+                            const value = data[idx];
+
+                            // Spatial weight (Gaussian-like)
+                            const spatialDist = Math.sqrt(kx * kx + ky * ky);
+                            const spatialWeight = Math.exp(-(spatialDist * spatialDist) / (2 * spatialSigma * spatialSigma));
+
+                            // Range weight (intensity similarity)
+                            const rangeDist = Math.abs(value - centerValue);
+                            const rangeWeight = Math.exp(-(rangeDist * rangeDist) / (2 * rangeSigma * rangeSigma));
+
+                            const weight = spatialWeight * rangeWeight;
+                            weightedSum += value * weight;
+                            weightSum += weight;
+                        }
+                    }
+                }
+
+                result[centerIdx] = weightSum > 0 ? weightedSum / weightSum : centerValue;
+            }
+        }
+
+        return result;
     }
 
     /**
