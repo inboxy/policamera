@@ -120,7 +120,7 @@ const AppConstants = {
     // Service Worker
     SERVICE_WORKER: {
         SCRIPT_PATH: 'sw.js',
-        CACHE_NAME: 'policamera-v2'
+        CACHE_NAME: 'policamera-v3' // Updated to match sw.js
     },
 
     // Theme Colors
