@@ -115,27 +115,19 @@
         </button>
     </div>
 
-    <!-- Core TensorFlow.js - load with defer to maintain order -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js" defer></script>
-
-    <!-- AI Models - preload for faster fetch, load with defer in order -->
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js">
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js">
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js">
-
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" defer></script>
-
-    <!-- App scripts - defer for faster page load, execute in order -->
-    <script src="database.js" defer></script>
-    <script src="qr.js" defer></script>
-    <script src="network.js" defer></script>
-    <script src="stitch.js" defer></script>
-    <script src="ai.js" defer></script>
-    <script src="pose.js" defer></script>
-    <script src="face.js" defer></script>
-    <script src="depth.js" defer></script>
-    <script src="app.js" defer></script>
+    <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.0/dist/opencv.min.js" onload="opencvReady();"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+    <script src="database.js"></script>
+    <script src="qr.js"></script>
+    <script src="network.js"></script>
+    <script src="stitch.js"></script>
+    <script src="opencv-wrapper.js"></script>
+    <script src="ai.js"></script>
+    <script src="pose.js"></script>
+    <script src="face.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
