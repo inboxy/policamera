@@ -66,60 +66,92 @@ class DepthPredictionManager {
         try {
             // Dynamically import Transformers.js (ES modules)
             console.log('📦 Loading Transformers.js library...');
-            this.transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+
+            // Add timeout for import (30 seconds)
+            const importPromise = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Transformers.js import timeout')), 30000)
+            );
+
+            this.transformers = await Promise.race([importPromise, timeoutPromise]);
             console.log('✅ Transformers.js library loaded');
+            console.log('Transformers version:', this.transformers.env?.version || 'unknown');
 
-            // Create depth estimation pipeline
-            console.log('📥 Loading Depth-Anything V2 model (first load may take ~30s)...');
-            console.log('ℹ️  Model will be cached for future use');
-
-            this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
-                device: 'webgpu', // Use WebGPU for acceleration, falls back to WASM
-                dtype: 'fp32',
-                progress_callback: (progress) => {
-                    if (progress.status === 'progress') {
-                        const percent = Math.round((progress.loaded / progress.total) * 100);
-                        console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
-                    } else if (progress.status === 'done') {
-                        console.log(`✅ Downloaded ${progress.file}`);
-                    }
-                }
-            });
-
-            // Initialize canvases
+            // Initialize canvases early
             this.preprocessCanvas = document.createElement('canvas');
             this.colorMapCanvas = document.createElement('canvas');
 
-            this.isModelLoaded = true;
-            this.isLoading = false;
+            // Try WASM first (more compatible than WebGPU)
+            console.log('📥 Loading Depth-Anything V2 model (first load may take 30-60s)...');
+            console.log('ℹ️  Model will be cached in browser for future use');
+            console.log('ℹ️  Using WASM backend for maximum compatibility');
 
-            console.log('✅ Depth-Anything V2 model loaded successfully');
-            console.log('🚀 Using WebGPU acceleration for depth estimation');
-            return true;
+            try {
+                this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
+                    device: 'wasm',
+                    dtype: 'fp32',
+                    progress_callback: (progress) => {
+                        if (progress.status === 'progress') {
+                            const percent = Math.round((progress.loaded / progress.total) * 100);
+                            console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
+                        } else if (progress.status === 'done') {
+                            console.log(`✅ Downloaded ${progress.file}`);
+                        } else if (progress.status === 'initiate') {
+                            console.log(`📦 Starting download: ${progress.file}`);
+                        }
+                    }
+                });
 
-        } catch (error) {
-            console.error('❌ Failed to initialize Depth-Anything V2:', error);
-            console.error('Error details:', {
-                message: error.message,
-                stack: error.stack
-            });
+                this.isModelLoaded = true;
+                this.isLoading = false;
+                console.log('✅ Depth-Anything V2 model loaded successfully (WASM)');
+                return true;
 
-            // Fallback: try without WebGPU
-            if (error.message?.includes('webgpu')) {
-                console.log('⚠️ WebGPU not available, trying CPU fallback...');
+            } catch (wasmError) {
+                console.warn('⚠️ WASM loading failed, trying WebGPU...', wasmError.message);
+
+                // Fallback to WebGPU if WASM fails
                 try {
                     this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
-                        device: 'wasm',
-                        dtype: 'fp32'
+                        device: 'webgpu',
+                        dtype: 'fp32',
+                        progress_callback: (progress) => {
+                            if (progress.status === 'progress') {
+                                const percent = Math.round((progress.loaded / progress.total) * 100);
+                                console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
+                            } else if (progress.status === 'done') {
+                                console.log(`✅ Downloaded ${progress.file}`);
+                            }
+                        }
                     });
 
                     this.isModelLoaded = true;
                     this.isLoading = false;
-                    console.log('✅ Depth model loaded (CPU mode)');
+                    console.log('✅ Depth-Anything V2 model loaded successfully (WebGPU)');
                     return true;
-                } catch (fallbackError) {
-                    console.error('❌ CPU fallback also failed:', fallbackError);
+
+                } catch (webgpuError) {
+                    console.error('❌ WebGPU also failed:', webgpuError.message);
+                    throw new Error(`Both WASM and WebGPU failed. WASM: ${wasmError.message}, WebGPU: ${webgpuError.message}`);
                 }
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to initialize Depth-Anything V2:', error);
+            console.error('Error type:', error.constructor.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+
+            // Check if it's a network error
+            if (error.message?.includes('timeout') || error.message?.includes('network') || error.message?.includes('fetch')) {
+                console.error('🌐 Network error detected. Please check your internet connection.');
+                console.error('💡 The model files are ~25MB and need to download on first use.');
+            }
+
+            // Check if transformers loaded
+            if (!this.transformers) {
+                console.error('📦 Transformers.js library failed to load.');
+                console.error('💡 Try refreshing the page or checking your internet connection.');
             }
 
             this.isLoading = false;
