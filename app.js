@@ -5,6 +5,7 @@ class PoliCameraApp {
         this.capturedPhotos = [];
         this.selectedPhotos = new Set();
         this.imageStitcher = null;
+        this.currentFacingMode = 'environment'; // Start with back camera
 
         // Detection state
         this.detectionInterval = null;
@@ -77,8 +78,22 @@ class PoliCameraApp {
         this.poseFab = document.getElementById('poseFab');
         this.faceFab = document.getElementById('faceFab');
         this.depthFab = document.getElementById('depthFab');
+        this.cameraSwitchFab = document.getElementById('cameraSwitchFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
+
+        // Orientation overlay elements
+        this.orientationOverlay = document.getElementById('orientationOverlay');
+        this.compassArrow = document.getElementById('compassArrow');
+        this.compassHeading = document.getElementById('compassHeading');
+        this.azimuthDisplay = document.getElementById('azimuthDisplay');
+        this.pitchDisplay = document.getElementById('pitchDisplay');
+        this.rollDisplay = document.getElementById('rollDisplay');
+
+        // PiP depth view elements
+        this.pipDepthView = document.getElementById('pipDepthView');
+        this.pipDepthCanvas = document.getElementById('pipDepthCanvas');
+        this.pipCloseBtn = document.getElementById('pipCloseBtn');
 
         // Debug: Check if depth button exists
         if (!this.depthFab) {
@@ -123,11 +138,13 @@ class PoliCameraApp {
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
         this.depthFab.addEventListener('click', () => this.toggleDepthPrediction());
+        this.cameraSwitchFab.addEventListener('click', () => this.switchCamera());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
         this.gpsToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleGPSOverlay();
         });
+        this.pipCloseBtn.addEventListener('click', () => this.closePipDepthView());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -326,8 +343,42 @@ class PoliCameraApp {
         // Delegate to GPS Manager
         this.gpsManager.updateOrientation(event);
 
+        // Update visual orientation display
+        this.updateOrientationDisplay(event);
+
         // Update VTT cue with orientation data
         this.updateVTTCue();
+    }
+
+    /**
+     * Update the visual orientation compass display
+     * @param {DeviceOrientationEvent} event - Orientation event
+     */
+    updateOrientationDisplay(event) {
+        const alpha = event.alpha || 0; // Compass direction (0-360)
+        const beta = event.beta || 0;   // Front-to-back tilt (-180 to 180)
+        const gamma = event.gamma || 0;  // Left-to-right tilt (-90 to 90)
+
+        // Update compass arrow rotation (pointing north)
+        if (this.compassArrow) {
+            this.compassArrow.style.transform = `rotate(${360 - alpha}deg)`;
+        }
+
+        // Update heading display
+        if (this.compassHeading) {
+            this.compassHeading.textContent = `${Math.round(alpha)}°`;
+        }
+
+        // Update detailed orientation values
+        if (this.azimuthDisplay) {
+            this.azimuthDisplay.textContent = `${Math.round(alpha)}°`;
+        }
+        if (this.pitchDisplay) {
+            this.pitchDisplay.textContent = `${Math.round(beta)}°`;
+        }
+        if (this.rollDisplay) {
+            this.rollDisplay.textContent = `${Math.round(gamma)}°`;
+        }
     }
 
     initializeWebVTT() {
@@ -588,7 +639,7 @@ class PoliCameraApp {
     async initializeCamera() {
         const constraints = {
             video: {
-                facingMode: 'environment', // Use back camera
+                facingMode: this.currentFacingMode, // Use currentFacingMode (environment or user)
                 width: { ideal: 1920 },
                 height: { ideal: 1080 }
             }
@@ -603,7 +654,66 @@ class PoliCameraApp {
             this.startRealTimeDetection();
         });
 
+        // Show camera switch button once camera is initialized
+        if (this.cameraSwitchFab) {
+            this.cameraSwitchFab.style.display = 'flex';
+        }
+
         return true;
+    }
+
+    /**
+     * Switch between front and back cameras
+     */
+    async switchCamera() {
+        try {
+            // Toggle facing mode
+            this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
+
+            // Stop current stream
+            if (this.stream) {
+                this.stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Stop detection during switch
+            if (this.isDetectionRunning) {
+                this.stopRealTimeDetection();
+            }
+
+            // Reinitialize camera with new facing mode
+            const constraints = {
+                video: {
+                    facingMode: this.currentFacingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            };
+
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            this.video.srcObject = this.stream;
+
+            // Restart detection after camera is ready
+            this.video.addEventListener('loadedmetadata', () => {
+                this.setupDetectionOverlay();
+                if (!this.isDetectionRunning) {
+                    this.startRealTimeDetection();
+                }
+            }, { once: true });
+
+            // Visual feedback
+            const icon = this.currentFacingMode === 'user' ? 'face' : 'camera_rear';
+            UIHelpers.showToast(
+                `Switched to ${this.currentFacingMode === 'user' ? 'front' : 'back'} camera`,
+                'success',
+                icon
+            );
+
+        } catch (error) {
+            console.error('Failed to switch camera:', error);
+            UIHelpers.showError('Failed to switch camera');
+            // Revert facing mode on error
+            this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
+        }
     }
 
     /**
@@ -723,15 +833,19 @@ class PoliCameraApp {
 
             // Enable/disable picture-in-picture mode
             if (isEnabled) {
-                // Enable PiP mode (depth overlay in top left)
-                depthPredictionManager.pipMode = true;
+                // Show PiP depth view
+                if (this.pipDepthView) {
+                    this.pipDepthView.style.display = 'block';
+                }
 
                 // Update button styling
                 this.depthFab.classList.add('active');
                 this.showToast('Depth PiP enabled - White=Near, Black=Far', 'layers');
             } else {
-                // Disable PiP mode
-                depthPredictionManager.pipMode = false;
+                // Hide PiP depth view
+                if (this.pipDepthView) {
+                    this.pipDepthView.style.display = 'none';
+                }
 
                 // Update button styling
                 this.depthFab.classList.remove('active');
@@ -740,6 +854,73 @@ class PoliCameraApp {
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
             this.showError('Failed to initialize depth prediction: ' + error.message);
+        }
+    }
+
+    /**
+     * Close the PiP depth view
+     */
+    closePipDepthView() {
+        if (this.pipDepthView) {
+            this.pipDepthView.style.display = 'none';
+        }
+        this.isDepthPredictionEnabled = false;
+        if (this.depthFab) {
+            this.depthFab.classList.remove('active');
+        }
+        if (window.depthPredictionManager) {
+            depthPredictionManager.toggle(); // Turn off depth prediction
+        }
+    }
+
+    /**
+     * Render the PiP depth view with inverted grayscale (white=near, black=far)
+     * @param {tf.Tensor} depthMap - The depth map tensor
+     */
+    async renderPipDepthView(depthMap) {
+        if (!this.pipDepthCanvas || !depthMap || !this.isDepthPredictionEnabled) return;
+
+        try {
+            const canvas = this.pipDepthCanvas;
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas size if not already set
+            if (canvas.width === 0 || canvas.height === 0) {
+                canvas.width = 200;
+                canvas.height = 150;
+            }
+
+            // Get depth data
+            const depthData = await depthMap.data();
+            const [depthHeight, depthWidth] = depthMap.shape;
+
+            // Create image data for the canvas
+            const imageData = ctx.createImageData(depthWidth, depthHeight);
+            const data = imageData.data;
+
+            // Convert depth to inverted grayscale (white=near, black=far)
+            for (let i = 0; i < depthData.length; i++) {
+                const pixelIndex = i * 4;
+                // Invert: 255 - value (so near objects are white, far are black)
+                const grayValue = Math.round(depthData[i]);
+                data[pixelIndex] = grayValue;     // R
+                data[pixelIndex + 1] = grayValue; // G
+                data[pixelIndex + 2] = grayValue; // B
+                data[pixelIndex + 3] = 255;       // A
+            }
+
+            // Draw to canvas (scaled to fill)
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = depthWidth;
+            tempCanvas.height = depthHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(imageData, 0, 0);
+
+            // Scale to PiP canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+        } catch (error) {
+            console.error('Failed to render PiP depth view:', error);
         }
     }
 
@@ -1383,6 +1564,11 @@ class PoliCameraApp {
             if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
                 // Note: predictDepth handles internal tensor disposal
                 this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
+
+                // Update PiP depth view
+                if (this.currentDepthMap) {
+                    await this.renderPipDepthView(this.currentDepthMap);
+                }
             } else {
                 // Dispose depth map when disabling depth prediction
                 if (this.currentDepthMap) {
