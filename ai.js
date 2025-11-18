@@ -25,7 +25,7 @@ class AIRecognitionManager {
 
         // Canvas pooling for better memory management
         this.canvasPool = [];
-        this.maxPoolSize = 2;
+        this.maxPoolSize = 5; // Increased from 2 for better burst handling
 
         // Fallback properties for non-worker mode
         this.model = null;
