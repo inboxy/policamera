@@ -6,6 +6,7 @@ class PoliCameraApp {
         this.selectedPhotos = new Set();
         this.imageStitcher = null;
         this.currentFacingMode = 'environment'; // Start with back camera
+        this.isSwitchingCamera = false; // Flag to prevent race conditions
 
         // Detection state
         this.detectionInterval = null;
@@ -47,6 +48,12 @@ class PoliCameraApp {
 
         // GPS Manager (using new refactored class)
         this.gpsManager = new GPSManager();
+
+        // Event listener cleanup tracking
+        this.eventListeners = [];
+
+        // Database availability flag
+        this.isDatabaseAvailable = false;
 
         // Initialize app
         this.initializeElements();
@@ -140,7 +147,26 @@ class PoliCameraApp {
         this.positionTrack = document.getElementById('positionTrack');
     }
 
+    /**
+     * Add event listener with automatic cleanup tracking
+     */
+    addEventListener(target, event, handler, options) {
+        target.addEventListener(event, handler, options);
+        this.eventListeners.push({ target, event, handler, options });
+    }
+
+    /**
+     * Remove all tracked event listeners
+     */
+    removeAllEventListeners() {
+        this.eventListeners.forEach(({ target, event, handler, options }) => {
+            target.removeEventListener(event, handler, options);
+        });
+        this.eventListeners = [];
+    }
+
     initializeEventListeners() {
+        // Button click handlers
         this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
         this.settingsFab.addEventListener('click', () => this.toggleSettings());
@@ -156,21 +182,23 @@ class PoliCameraApp {
         });
         this.pipCloseBtn.addEventListener('click', () => this.closePipDepthView());
 
-        // Handle visibility change for camera
-        document.addEventListener('visibilitychange', () => {
+        // Handle visibility change for camera (tracked for cleanup)
+        this.visibilityChangeHandler = () => {
             if (document.hidden && this.stream) {
                 this.pauseCamera();
             } else if (!document.hidden && this.stream) {
                 this.resumeCamera();
             }
-        });
+        };
+        this.addEventListener(document, 'visibilitychange', this.visibilityChangeHandler);
 
-        // Handle window resize to update depth canvas dimensions
-        window.addEventListener('resize', () => {
+        // Handle window resize (tracked for cleanup, with debouncing)
+        this.resizeHandler = Utils.debounce(() => {
             if (this.isDepthPredictionEnabled && depthPredictionManager?.dualViewMode) {
                 this.resizeDepthCanvas();
             }
-        });
+        }, 250);
+        this.addEventListener(window, 'resize', this.resizeHandler);
     }
 
     /**
@@ -340,9 +368,10 @@ class PoliCameraApp {
     }
 
     startOrientationListening() {
-        window.addEventListener('deviceorientation', (event) => {
+        this.orientationHandler = (event) => {
             this.updateOrientation(event);
-        });
+        };
+        this.addEventListener(window, 'deviceorientation', this.orientationHandler);
     }
 
     /**
@@ -463,10 +492,12 @@ class PoliCameraApp {
     async initializeDatabase() {
         try {
             await databaseManager.init();
-            console.log('Database initialized successfully');
+            this.isDatabaseAvailable = true;
+            console.log('✅ Database initialized successfully');
         } catch (error) {
-            console.error('Failed to initialize database:', error);
-            this.showError('Database initialization failed');
+            console.error('❌ Failed to initialize database:', error);
+            this.isDatabaseAvailable = false;
+            this.showError('Database unavailable - photos may not persist');
         }
     }
 
@@ -666,13 +697,22 @@ class PoliCameraApp {
      * Switch between front and back cameras
      */
     async switchCamera() {
+        // Prevent concurrent camera switches
+        if (this.isSwitchingCamera) {
+            console.warn('Camera switch already in progress');
+            return;
+        }
+
         try {
+            this.isSwitchingCamera = true;
+
             // Toggle facing mode
             this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
 
             // Stop current stream
             if (this.stream) {
                 this.stream.getTracks().forEach(track => track.stop());
+                this.stream = null;
             }
 
             // Stop detection during switch
@@ -695,6 +735,7 @@ class PoliCameraApp {
             // Restart detection after camera is ready
             this.video.addEventListener('loadedmetadata', () => {
                 this.setupDetectionOverlay();
+                this.isSwitchingCamera = false; // Clear flag when ready
                 if (!this.isDetectionRunning) {
                     this.startRealTimeDetection();
                 }
@@ -713,6 +754,7 @@ class PoliCameraApp {
             UIHelpers.showError('Failed to switch camera');
             // Revert facing mode on error
             this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
+            this.isSwitchingCamera = false; // Reset flag on error
         }
     }
 
@@ -1513,12 +1555,18 @@ class PoliCameraApp {
     }
 
     async startRealTimeDetection() {
-        if (this.isDetectionRunning || !window.aiRecognitionManager) {
+        // Check if detection already running, camera switching, or AI manager unavailable
+        if (this.isDetectionRunning || this.isSwitchingCamera || !window.aiRecognitionManager) {
             if (!window.aiRecognitionManager) {
                 console.error('AI Recognition Manager not available');
+            } else if (this.isSwitchingCamera) {
+                console.log('Camera switch in progress, deferring detection start');
             }
             return;
         }
+
+        // Set flag immediately to prevent race conditions
+        this.isDetectionRunning = true;
 
         try {
             console.log('🤖 Initializing AI model for real-time detection...');
@@ -1528,10 +1576,10 @@ class PoliCameraApp {
             if (!isLoaded) {
                 console.warn('⚠️ AI model failed to load, real-time detection disabled');
                 this.showError('AI model failed to load');
+                this.isDetectionRunning = false; // Reset on failure
                 return;
             }
 
-            this.isDetectionRunning = true;
             console.log('✅ Real-time AI detection started');
             console.log('📊 Detection overlay size:', this.detectionOverlay.width, 'x', this.detectionOverlay.height);
             console.log('📹 Video size:', this.video.videoWidth, 'x', this.video.videoHeight);
@@ -1544,7 +1592,7 @@ class PoliCameraApp {
 
         } catch (error) {
             console.error('❌ Failed to start real-time detection:', error);
-            this.isDetectionRunning = false;
+            this.isDetectionRunning = false; // Reset on error
             this.showError('Failed to start AI detection: ' + error.message);
         }
     }
@@ -2082,7 +2130,12 @@ class PoliCameraApp {
     /**
      * Cleanup resources before app shutdown
      */
-    cleanup() {
+    async cleanup() {
+        console.log('🧹 Cleaning up resources...');
+
+        // Remove all tracked event listeners
+        this.removeAllEventListeners();
+
         // Cleanup VTT resources
         if (this.currentVTTUrl) {
             URL.revokeObjectURL(this.currentVTTUrl);
@@ -2092,35 +2145,65 @@ class PoliCameraApp {
         // Cleanup camera stream
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+
+        // Stop real-time detection first
+        this.stopRealTimeDetection();
+
+        // Wait a frame for any pending operations to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Cleanup current depth map before manager cleanup
+        if (this.currentDepthMap) {
+            try {
+                this.currentDepthMap.dispose();
+            } catch (error) {
+                console.warn('Error disposing depth map:', error);
+            }
+            this.currentDepthMap = null;
         }
 
         // Cleanup GPS Manager
         if (this.gpsManager) {
-            this.gpsManager.cleanup();
+            try {
+                this.gpsManager.cleanup();
+            } catch (error) {
+                console.warn('Error cleaning up GPS manager:', error);
+            }
         }
-
-        // Stop real-time detection
-        this.stopRealTimeDetection();
 
         // Cleanup AI modules
+        if (window.depthPredictionManager) {
+            try {
+                await depthPredictionManager.cleanup();
+            } catch (error) {
+                console.warn('Error cleaning up depth manager:', error);
+            }
+        }
         if (window.aiRecognitionManager) {
-            aiRecognitionManager.cleanup();
+            try {
+                aiRecognitionManager.cleanup();
+            } catch (error) {
+                console.warn('Error cleaning up AI manager:', error);
+            }
         }
         if (window.poseEstimationManager) {
-            poseEstimationManager.cleanup();
+            try {
+                poseEstimationManager.cleanup();
+            } catch (error) {
+                console.warn('Error cleaning up pose manager:', error);
+            }
         }
         if (window.faceDetectionManager) {
-            faceDetectionManager.cleanup();
-        }
-        if (window.depthPredictionManager) {
-            depthPredictionManager.cleanup();
+            try {
+                faceDetectionManager.cleanup();
+            } catch (error) {
+                console.warn('Error cleaning up face manager:', error);
+            }
         }
 
-        // Cleanup current depth map if exists
-        if (this.currentDepthMap) {
-            this.currentDepthMap.dispose();
-            this.currentDepthMap = null;
-        }
+        console.log('✅ Cleanup complete');
     }
 }
 
