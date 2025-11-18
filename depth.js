@@ -67,15 +67,36 @@ class DepthPredictionManager {
             // Dynamically import Transformers.js (ES modules)
             console.log('📦 Loading Transformers.js library...');
 
-            // Add timeout for import (30 seconds)
-            const importPromise = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Transformers.js import timeout')), 30000)
-            );
+            // Try multiple CDNs for reliability
+            const cdnUrls = [
+                'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2',
+                'https://unpkg.com/@huggingface/transformers@3.0.2/dist/transformers.min.js'
+            ];
 
-            this.transformers = await Promise.race([importPromise, timeoutPromise]);
-            console.log('✅ Transformers.js library loaded');
-            console.log('Transformers version:', this.transformers.env?.version || 'unknown');
+            let loadError = null;
+            for (const url of cdnUrls) {
+                try {
+                    console.log(`Trying CDN: ${url}`);
+                    const importPromise = import(url);
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Import timeout after 30s')), 30000)
+                    );
+
+                    this.transformers = await Promise.race([importPromise, timeoutPromise]);
+                    console.log('✅ Transformers.js library loaded from:', url);
+                    console.log('Transformers version:', this.transformers.env?.version || 'unknown');
+                    loadError = null;
+                    break; // Success, exit loop
+                } catch (err) {
+                    console.warn(`Failed to load from ${url}:`, err.message);
+                    loadError = err;
+                    continue; // Try next CDN
+                }
+            }
+
+            if (loadError) {
+                throw new Error('Failed to load Transformers.js from all CDNs: ' + loadError.message);
+            }
 
             // Initialize canvases early
             this.preprocessCanvas = document.createElement('canvas');

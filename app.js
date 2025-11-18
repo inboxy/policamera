@@ -638,18 +638,42 @@ class PoliCameraApp {
 
             if (cameraSuccess) {
                 this.captureFab.style.display = 'flex';
-                this.poseFab.style.display = 'flex';
-                this.faceFab.style.display = 'flex';
-                this.depthFab.style.display = 'flex';
-                console.log('✅ All feature buttons displayed (including depth)');
+                this.cameraSwitchFab.style.display = 'flex';
+                console.log('✅ Camera control buttons displayed');
 
-                // Log available managers
-                console.log('Available AI managers:', {
+                // Show AI feature buttons only if managers are available
+                const managersAvailable = {
                     ai: !!window.aiRecognitionManager,
                     pose: !!window.poseEstimationManager,
                     face: !!window.faceDetectionManager,
                     depth: !!window.depthPredictionManager
-                });
+                };
+
+                console.log('Available AI managers:', managersAvailable);
+
+                // Show pose button if manager is available
+                if (managersAvailable.pose) {
+                    this.poseFab.style.display = 'flex';
+                    console.log('✅ Pose detection button shown');
+                } else {
+                    console.warn('⚠️ Pose manager not available - button hidden');
+                }
+
+                // Show face button if manager is available
+                if (managersAvailable.face) {
+                    this.faceFab.style.display = 'flex';
+                    console.log('✅ Face detection button shown');
+                } else {
+                    console.warn('⚠️ Face manager not available - button hidden');
+                }
+
+                // Show depth button if manager is available
+                if (managersAvailable.depth) {
+                    this.depthFab.style.display = 'flex';
+                    console.log('✅ Depth prediction button shown');
+                } else {
+                    console.warn('⚠️ Depth manager not available - button hidden');
+                }
             }
 
             // Show errors if any

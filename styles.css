@@ -671,6 +671,33 @@ body {
   right: 24px;
 }
 
+/* Prevent button overlap on short screens */
+@media (max-height: 700px) {
+  .start-fab { bottom: 16px; }
+  .capture-fab { bottom: 80px; }
+  .camera-switch-fab { bottom: 144px; }
+  .depth-fab { bottom: 208px; }
+  .face-fab { bottom: 272px; }
+  .pose-fab { bottom: 336px; }
+  .qr-fab { bottom: 400px; }
+}
+
+@media (max-height: 600px) {
+  .fab {
+    width: 48px;
+    height: 48px;
+  }
+  .fab .material-icons {
+    font-size: 20px;
+  }
+  .start-fab { bottom: 12px; }
+  .capture-fab { bottom: 68px; }
+  .camera-switch-fab { bottom: 124px; }
+  .depth-fab { bottom: 180px; }
+  .face-fab { bottom: 236px; }
+  .pose-fab { bottom: 292px; }
+  .qr-fab { bottom: 348px; }
+}
 
 .photos-grid {
   display: grid;
