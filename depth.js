@@ -85,6 +85,20 @@ class DepthPredictionManager {
                     this.transformers = await Promise.race([importPromise, timeoutPromise]);
                     console.log('✅ Transformers.js library loaded from:', url);
                     console.log('Transformers version:', this.transformers.env?.version || 'unknown');
+
+                    // Configure Transformers.js environment for better reliability
+                    if (this.transformers.env) {
+                        // Allow browser cache for models (reduces re-downloads)
+                        this.transformers.env.useBrowserCache = true;
+                        this.transformers.env.allowLocalModels = true;
+                        this.transformers.env.allowRemoteModels = true;
+
+                        // Add retry configuration for fetch requests
+                        this.transformers.env.useCustomCache = false;
+
+                        console.log('✅ Transformers.js environment configured for reliability');
+                    }
+
                     loadError = null;
                     break; // Success, exit loop
                 } catch (err) {
@@ -107,52 +121,70 @@ class DepthPredictionManager {
             console.log('ℹ️  Model will be cached in browser for future use');
             console.log('ℹ️  Using WASM backend for maximum compatibility');
 
-            try {
-                this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
-                    device: 'wasm',
-                    dtype: 'fp32',
-                    progress_callback: (progress) => {
-                        if (progress.status === 'progress') {
-                            const percent = Math.round((progress.loaded / progress.total) * 100);
-                            console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
-                        } else if (progress.status === 'done') {
-                            console.log(`✅ Downloaded ${progress.file}`);
-                        } else if (progress.status === 'initiate') {
-                            console.log(`📦 Starting download: ${progress.file}`);
+            // Helper function to load model with retry logic
+            const loadModelWithRetry = async (device, maxRetries = 3) => {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`📥 Attempt ${attempt}/${maxRetries} to load model (${device})...`);
+
+                        const estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
+                            device: device,
+                            dtype: 'fp32',
+                            progress_callback: (progress) => {
+                                if (progress.status === 'progress') {
+                                    const percent = Math.round((progress.loaded / progress.total) * 100);
+                                    console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
+                                } else if (progress.status === 'done') {
+                                    console.log(`✅ Downloaded ${progress.file}`);
+                                } else if (progress.status === 'initiate') {
+                                    console.log(`📦 Starting download: ${progress.file}`);
+                                }
+                            }
+                        });
+
+                        return estimator; // Success!
+
+                    } catch (error) {
+                        console.warn(`⚠️ Attempt ${attempt} failed:`, error.message);
+
+                        // Check if it's a 401/403 authentication error
+                        if (error.message?.includes('401') || error.message?.includes('Unauthorized') ||
+                            error.message?.includes('403') || error.message?.includes('Forbidden')) {
+                            console.warn('🔒 Authentication error detected - HuggingFace API may be rate limiting');
+                            console.log('💡 This is often temporary. The model will retry on next activation.');
+                        }
+
+                        if (attempt < maxRetries) {
+                            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+                            console.log(`⏱️  Retrying in ${delay/1000} seconds...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        } else {
+                            throw error; // Final attempt failed
                         }
                     }
-                });
+                }
+            };
 
+            try {
+                this.estimator = await loadModelWithRetry('wasm', 2); // 2 retries for WASM
                 this.isModelLoaded = true;
                 this.isLoading = false;
                 console.log('✅ Depth-Anything V2 model loaded successfully (WASM)');
                 return true;
 
             } catch (wasmError) {
-                console.warn('⚠️ WASM loading failed, trying WebGPU...', wasmError.message);
+                console.warn('⚠️ WASM loading failed after retries, trying WebGPU...', wasmError.message);
 
                 // Fallback to WebGPU if WASM fails
                 try {
-                    this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
-                        device: 'webgpu',
-                        dtype: 'fp32',
-                        progress_callback: (progress) => {
-                            if (progress.status === 'progress') {
-                                const percent = Math.round((progress.loaded / progress.total) * 100);
-                                console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
-                            } else if (progress.status === 'done') {
-                                console.log(`✅ Downloaded ${progress.file}`);
-                            }
-                        }
-                    });
-
+                    this.estimator = await loadModelWithRetry('webgpu', 2); // 2 retries for WebGPU
                     this.isModelLoaded = true;
                     this.isLoading = false;
                     console.log('✅ Depth-Anything V2 model loaded successfully (WebGPU)');
                     return true;
 
                 } catch (webgpuError) {
-                    console.error('❌ WebGPU also failed:', webgpuError.message);
+                    console.error('❌ WebGPU also failed after retries:', webgpuError.message);
                     throw new Error(`Both WASM and WebGPU failed. WASM: ${wasmError.message}, WebGPU: ${webgpuError.message}`);
                 }
             }
@@ -161,19 +193,27 @@ class DepthPredictionManager {
             console.error('❌ Failed to initialize Depth-Anything V2:', error);
             console.error('Error type:', error.constructor.name);
             console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
 
-            // Check if it's a network error
-            if (error.message?.includes('timeout') || error.message?.includes('network') || error.message?.includes('fetch')) {
+            // Detailed error diagnosis
+            if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+                console.error('🔒 HuggingFace API returned 401 Unauthorized');
+                console.error('💡 Common causes:');
+                console.error('   - HuggingFace rate limiting (temporary)');
+                console.error('   - Model may require authentication');
+                console.error('   - API service disruption');
+                console.error('💡 Solutions:');
+                console.error('   1. Wait a few minutes and try again');
+                console.error('   2. The model will auto-retry when you click the depth button');
+                console.error('   3. Check HuggingFace status: https://status.huggingface.co');
+            } else if (error.message?.includes('timeout') || error.message?.includes('network') || error.message?.includes('fetch')) {
                 console.error('🌐 Network error detected. Please check your internet connection.');
                 console.error('💡 The model files are ~25MB and need to download on first use.');
-            }
-
-            // Check if transformers loaded
-            if (!this.transformers) {
+            } else if (!this.transformers) {
                 console.error('📦 Transformers.js library failed to load.');
                 console.error('💡 Try refreshing the page or checking your internet connection.');
             }
+
+            console.log('💡 Depth prediction will remain available - model loads on-demand when activated');
 
             this.isLoading = false;
             this.isModelLoaded = false;
