@@ -13,6 +13,8 @@ class PoliCameraApp {
         this.isDetectionRunning = false;
         this.hasLoggedFirstDetection = false;
         this.hasLoggedDetectionError = false;
+        this.hasLoggedOpenCVWarning = false; // Track OpenCV availability warning
+        this.hasLoggedContourError = false; // Track contour extraction errors
 
         // AI features state
         this.isPoseEstimationEnabled = false;
@@ -1817,14 +1819,23 @@ class PoliCameraApp {
                     contourPoints = cached.contour;
                 } else {
                     // Extract new contour
-                    contourPoints = openCVWrapper.extractObjectContour(this.video, bbox, 2.0);
+                    try {
+                        contourPoints = openCVWrapper.extractObjectContour(this.video, bbox, 2.0);
 
-                    // Cache the result
-                    if (contourPoints) {
-                        this.contourCache.set(cacheKey, {
-                            contour: contourPoints,
-                            frameNumber: this.currentFrameNumber
-                        });
+                        // Cache the result
+                        if (contourPoints && contourPoints.length > 2) {
+                            this.contourCache.set(cacheKey, {
+                                contour: contourPoints,
+                                frameNumber: this.currentFrameNumber
+                            });
+                        }
+                    } catch (error) {
+                        // Log error once per session
+                        if (!this.hasLoggedContourError) {
+                            console.warn('Contour extraction failed, using fallback rendering:', error.message);
+                            this.hasLoggedContourError = true;
+                        }
+                        contourPoints = null;
                     }
                 }
 
@@ -1833,6 +1844,12 @@ class PoliCameraApp {
                     const oldestKey = this.contourCache.keys().next().value;
                     this.contourCache.delete(oldestKey);
                 }
+            } else if (!this.hasLoggedOpenCVWarning && this.currentFrameNumber > 30) {
+                // Log OpenCV status once after 30 frames (~1 second)
+                console.warn('⚠️ OpenCV not ready - using fallback corner rendering');
+                console.log('OpenCV available:', !!window.openCVWrapper);
+                console.log('OpenCV ready:', window.openCVWrapper?.isReady());
+                this.hasLoggedOpenCVWarning = true;
             }
 
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
