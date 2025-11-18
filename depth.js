@@ -1,27 +1,27 @@
 /**
  * Depth Prediction Manager for PoliCamera
- * Uses TensorFlow.js with MiDaS model for monocular depth estimation
+ * Uses TensorFlow.js native depth estimation API
  */
 
 console.log('🌊 Loading depth.js module...');
 
 class DepthPredictionManager {
     constructor() {
-        this.model = null;
+        this.estimator = null; // TensorFlow.js depth estimator
         this.isModelLoaded = false;
         this.isLoading = false;
         this.isEnabled = false;
-        this.useFallbackMode = false; // Use simplified depth estimation if TFLite fails
+        this.useFallbackMode = false; // Use simplified depth if model fails
 
         // Performance settings - OPTIMIZED for real-time
-        this.inputSize = 256; // MiDaS v2.1 small requires 256x256 input
-        this.targetFrameTime = 1000 / 10; // 10 FPS for depth (even more conservative)
+        this.inputSize = 256;
+        this.targetFrameTime = 1000 / 10; // 10 FPS for depth
         this.lastProcessTime = 0;
 
-        // Visualization settings (OPTIMIZED for performance)
-        this.depthOpacity = 0.7; // Increased opacity for better visibility
-        this.colorMode = 'inferno'; // Inferno colormap (like MiDaS demos) - perceptually uniform
-        this.showAvgDepth = true; // Show average depth value
+        // Visualization settings
+        this.depthOpacity = 0.7;
+        this.colorMode = 'inferno';
+        this.showAvgDepth = true;
 
         // Cached depth data
         this.lastDepthMap = null;
@@ -37,10 +37,6 @@ class DepthPredictionManager {
         this.cachedImageData = null;
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
-
-        // Model URL - Using MiDaS v2 TFLite model from Hugging Face
-        // Direct CDN link via Hugging Face resolve endpoint (bypasses CORS issues)
-        this.modelUrl = 'https://huggingface.co/qualcomm/Midas-V2/resolve/main/Midas-V2.tflite';
     }
 
     /**
@@ -69,7 +65,7 @@ class DepthPredictionManager {
         }
 
         this.isLoading = true;
-        console.log('🌊 Loading MiDaS depth prediction model (lazy init)...');
+        console.log('🌊 Loading TensorFlow.js depth estimation model...');
 
         try {
             // Wait for TensorFlow.js to be ready
@@ -81,16 +77,15 @@ class DepthPredictionManager {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
-            // Wait for TFLite to be ready
-            let tfliteWaitCount = 0;
-            while (typeof tflite === 'undefined') {
-                if (tfliteWaitCount++ > 50) {
-                    console.warn('⚠️ TFLite failed to load after 5 seconds, falling back to simplified depth estimation');
-                    // Fall back to simplified depth estimation without TFLite
+            // Wait for depth estimation API to be ready
+            let depthWaitCount = 0;
+            while (typeof depthEstimation === 'undefined') {
+                if (depthWaitCount++ > 50) {
+                    console.warn('⚠️ Depth estimation API failed to load, falling back to simplified depth estimation');
                     this.useFallbackMode = true;
                     break;
                 }
-                console.log('⏳ Waiting for TFLite to load...');
+                console.log('⏳ Waiting for depth estimation API to load...');
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
@@ -98,28 +93,29 @@ class DepthPredictionManager {
             const backend = tf.getBackend();
             console.log(`Using ${backend} backend for depth prediction`);
 
-            // Only try to load TFLite model if TFLite is available
-            if (!this.useFallbackMode && typeof tflite !== 'undefined') {
+            // Try to load the TensorFlow.js depth model
+            if (!this.useFallbackMode && typeof depthEstimation !== 'undefined') {
                 try {
-                    console.log('📥 Loading MiDaS TFLite model from:', this.modelUrl);
-                    console.log('⏳ This may take a moment (model is ~66MB)...');
+                    console.log('📥 Loading ARPortraitDepth model...');
 
-                    // Add timeout for model loading (30 seconds)
-                    const modelPromise = tflite.loadTFLiteModel(this.modelUrl);
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Model loading timeout after 30 seconds')), 30000)
+                    // Create depth estimator with ARPortraitDepth model
+                    this.estimator = await depthEstimation.createEstimator(
+                        depthEstimation.SupportedModels.ARPortraitDepth,
+                        {
+                            outputDepthRange: [0, 1],
+                            outputStride: 16
+                        }
                     );
 
-                    this.model = await Promise.race([modelPromise, timeoutPromise]);
-                    console.log('✅ MiDaS TFLite model loaded successfully');
+                    console.log('✅ TensorFlow.js depth model loaded successfully');
                 } catch (modelError) {
-                    console.error('❌ Failed to load MiDaS TFLite model:', modelError);
+                    console.error('❌ Failed to load TensorFlow.js depth model:', modelError);
                     console.log('⚠️ Falling back to simplified depth estimation');
                     this.useFallbackMode = true;
-                    this.model = null;
+                    this.estimator = null;
                 }
             } else {
-                console.log('ℹ️ Using fallback depth estimation (TFLite not available)');
+                console.log('ℹ️ Using fallback depth estimation (depth API not available)');
             }
 
             // Initialize preprocessing canvas
@@ -133,7 +129,7 @@ class DepthPredictionManager {
             this.isModelLoaded = true;
             this.isLoading = false;
 
-            const mode = this.useFallbackMode ? 'fallback mode' : 'MiDaS model';
+            const mode = this.useFallbackMode ? 'fallback mode' : 'TensorFlow.js ARPortraitDepth';
             console.log(`✅ Depth prediction initialized (${mode})`);
             return true;
 
@@ -205,14 +201,14 @@ class DepthPredictionManager {
     }
 
     /**
-     * Depth estimation using TFLite model or fallback method
+     * Depth estimation using TensorFlow.js model or fallback method
      * Returns normalized depth map (0-255, inverted so white=near, black=far)
      */
     async estimateDepthSimplified(imageElement) {
         try {
-            // Use TFLite model if available
-            if (this.model && !this.useFallbackMode) {
-                return await this.estimateDepthWithTFLite(imageElement);
+            // Use TensorFlow.js depth model if available
+            if (this.estimator && !this.useFallbackMode) {
+                return await this.estimateDepthWithTensorFlowJS(imageElement);
             }
 
             // Otherwise use fallback method
@@ -220,57 +216,54 @@ class DepthPredictionManager {
 
         } catch (error) {
             console.error('Depth estimation failed:', error);
-            return null;
+            // Fall back to simplified method if TF.js model fails
+            return await this.estimateDepthFallback(imageElement);
         }
     }
 
     /**
-     * MiDaS TFLite depth estimation
+     * TensorFlow.js native depth estimation using ARPortraitDepth
      */
-    async estimateDepthWithTFLite(imageElement) {
-        return tf.tidy(() => {
-            // Preprocess: Draw image to 256x256 canvas
-            const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
+    async estimateDepthWithTensorFlowJS(imageElement) {
+        try {
+            // Run depth estimation
+            const depthResult = await this.estimator.estimateDepth(imageElement, {
+                minDepth: 0,
+                maxDepth: 1
+            });
 
-            // Convert to tensor and normalize to [-1, 1] (MiDaS requirement)
-            const imageTensor = tf.browser.fromPixels(this.preprocessCanvas);
-            const normalized = tf.div(
-                tf.sub(tf.cast(imageTensor, 'float32'), 127.5),
-                127.5
-            );
+            // Convert to tensor
+            const depthTensor = depthResult.toTensor();
 
-            // Add batch dimension and ensure correct shape [1, 256, 256, 3]
-            const batched = tf.expandDims(normalized, 0);
+            return tf.tidy(() => {
+                // Ensure 2D tensor
+                let depth2D = depthTensor.shape.length > 2 ? tf.squeeze(depthTensor) : depthTensor;
 
-            // Run MiDaS inference
-            const depthOutput = this.model.predict(batched);
+                // Normalize to 0-255 range
+                const depthMin = tf.min(depth2D);
+                const depthMax = tf.max(depth2D);
+                const depthRange = tf.sub(depthMax, depthMin);
 
-            // Remove batch dimension
-            let depthMap = tf.squeeze(depthOutput);
+                // Normalize to 0-1
+                let normalized = tf.div(tf.sub(depth2D, depthMin), depthRange);
 
-            // Normalize depth to 0-255 range
-            const depthMin = tf.min(depthMap);
-            const depthMax = tf.max(depthMap);
-            const depthRange = tf.sub(depthMax, depthMin);
+                // IMPORTANT: Invert so white=near, black=far
+                // ARPortraitDepth outputs higher values for closer objects
+                normalized = tf.sub(1.0, normalized);
 
-            // Normalize to 0-1
-            let normalizedDepth = tf.div(tf.sub(depthMap, depthMin), depthRange);
+                // Scale to 0-255
+                const scaled = tf.mul(normalized, 255);
 
-            // IMPORTANT: Invert so white=near, black=far
-            // MiDaS outputs higher values for closer objects, so we need to invert
-            normalizedDepth = tf.sub(1.0, normalizedDepth);
+                // Dispose the original tensor
+                depthTensor.dispose();
 
-            // Scale to 0-255
-            const scaledDepth = tf.mul(normalizedDepth, 255);
+                return scaled;
+            });
 
-            // Ensure 2D tensor
-            if (scaledDepth.shape.length > 2) {
-                return tf.squeeze(scaledDepth);
-            }
-
-            return scaledDepth;
-        });
+        } catch (error) {
+            console.error('TensorFlow.js depth estimation failed:', error);
+            throw error; // Let the parent method handle fallback
+        }
     }
 
     /**
