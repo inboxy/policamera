@@ -5,6 +5,7 @@ class PoliCameraApp {
         this.capturedPhotos = [];
         this.selectedPhotos = new Set();
         this.imageStitcher = null;
+        this.currentFacingMode = 'environment'; // Start with back camera
 
         // Detection state
         this.detectionInterval = null;
@@ -25,6 +26,14 @@ class PoliCameraApp {
         this.cachedVideoScaleY = 1;
         this.cachedVideoWidth = 0;
         this.cachedVideoHeight = 0;
+
+        // FPS tracking
+        this.fpsFrameTimes = [];
+        this.fpsLastUpdate = 0;
+        this.detectionFps = 0;
+        this.depthFps = 0;
+        this.lastDetectionTime = 0;
+        this.lastDepthTime = 0;
 
         // VTT tracking
         this.vttTrack = null;
@@ -77,8 +86,28 @@ class PoliCameraApp {
         this.poseFab = document.getElementById('poseFab');
         this.faceFab = document.getElementById('faceFab');
         this.depthFab = document.getElementById('depthFab');
+        this.cameraSwitchFab = document.getElementById('cameraSwitchFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
+
+        // Orientation overlay elements
+        this.orientationOverlay = document.getElementById('orientationOverlay');
+        this.compassArrow = document.getElementById('compassArrow');
+        this.compassHeading = document.getElementById('compassHeading');
+        this.azimuthDisplay = document.getElementById('azimuthDisplay');
+        this.pitchDisplay = document.getElementById('pitchDisplay');
+        this.rollDisplay = document.getElementById('rollDisplay');
+
+        // PiP depth view elements
+        this.pipDepthView = document.getElementById('pipDepthView');
+        this.pipDepthCanvas = document.getElementById('pipDepthCanvas');
+        this.pipCloseBtn = document.getElementById('pipCloseBtn');
+
+        // FPS overlay elements
+        this.fpsOverlay = document.getElementById('fpsOverlay');
+        this.fpsValue = document.getElementById('fpsValue');
+        this.detectionFpsEl = document.getElementById('detectionFps');
+        this.depthFpsEl = document.getElementById('depthFps');
 
         // Debug: Check if depth button exists
         if (!this.depthFab) {
@@ -123,11 +152,13 @@ class PoliCameraApp {
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
         this.depthFab.addEventListener('click', () => this.toggleDepthPrediction());
+        this.cameraSwitchFab.addEventListener('click', () => this.switchCamera());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
         this.gpsToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleGPSOverlay();
         });
+        this.pipCloseBtn.addEventListener('click', () => this.closePipDepthView());
 
         // Handle visibility change for camera
         document.addEventListener('visibilitychange', () => {
@@ -326,8 +357,42 @@ class PoliCameraApp {
         // Delegate to GPS Manager
         this.gpsManager.updateOrientation(event);
 
+        // Update visual orientation display
+        this.updateOrientationDisplay(event);
+
         // Update VTT cue with orientation data
         this.updateVTTCue();
+    }
+
+    /**
+     * Update the visual orientation compass display
+     * @param {DeviceOrientationEvent} event - Orientation event
+     */
+    updateOrientationDisplay(event) {
+        const alpha = event.alpha || 0; // Compass direction (0-360)
+        const beta = event.beta || 0;   // Front-to-back tilt (-180 to 180)
+        const gamma = event.gamma || 0;  // Left-to-right tilt (-90 to 90)
+
+        // Update compass arrow rotation (pointing north)
+        if (this.compassArrow) {
+            this.compassArrow.style.transform = `rotate(${360 - alpha}deg)`;
+        }
+
+        // Update heading display
+        if (this.compassHeading) {
+            this.compassHeading.textContent = `${Math.round(alpha)}°`;
+        }
+
+        // Update detailed orientation values
+        if (this.azimuthDisplay) {
+            this.azimuthDisplay.textContent = `${Math.round(alpha)}°`;
+        }
+        if (this.pitchDisplay) {
+            this.pitchDisplay.textContent = `${Math.round(beta)}°`;
+        }
+        if (this.rollDisplay) {
+            this.rollDisplay.textContent = `${Math.round(gamma)}°`;
+        }
     }
 
     initializeWebVTT() {
@@ -588,7 +653,7 @@ class PoliCameraApp {
     async initializeCamera() {
         const constraints = {
             video: {
-                facingMode: 'environment', // Use back camera
+                facingMode: this.currentFacingMode, // Use currentFacingMode (environment or user)
                 width: { ideal: 1920 },
                 height: { ideal: 1080 }
             }
@@ -603,7 +668,66 @@ class PoliCameraApp {
             this.startRealTimeDetection();
         });
 
+        // Show camera switch button once camera is initialized
+        if (this.cameraSwitchFab) {
+            this.cameraSwitchFab.style.display = 'flex';
+        }
+
         return true;
+    }
+
+    /**
+     * Switch between front and back cameras
+     */
+    async switchCamera() {
+        try {
+            // Toggle facing mode
+            this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
+
+            // Stop current stream
+            if (this.stream) {
+                this.stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Stop detection during switch
+            if (this.isDetectionRunning) {
+                this.stopRealTimeDetection();
+            }
+
+            // Reinitialize camera with new facing mode
+            const constraints = {
+                video: {
+                    facingMode: this.currentFacingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            };
+
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            this.video.srcObject = this.stream;
+
+            // Restart detection after camera is ready
+            this.video.addEventListener('loadedmetadata', () => {
+                this.setupDetectionOverlay();
+                if (!this.isDetectionRunning) {
+                    this.startRealTimeDetection();
+                }
+            }, { once: true });
+
+            // Visual feedback
+            const icon = this.currentFacingMode === 'user' ? 'face' : 'camera_rear';
+            UIHelpers.showToast(
+                `Switched to ${this.currentFacingMode === 'user' ? 'front' : 'back'} camera`,
+                'success',
+                icon
+            );
+
+        } catch (error) {
+            console.error('Failed to switch camera:', error);
+            UIHelpers.showError('Failed to switch camera');
+            // Revert facing mode on error
+            this.currentFacingMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
+        }
     }
 
     /**
@@ -723,15 +847,19 @@ class PoliCameraApp {
 
             // Enable/disable picture-in-picture mode
             if (isEnabled) {
-                // Enable PiP mode (depth overlay in top left)
-                depthPredictionManager.pipMode = true;
+                // Show PiP depth view
+                if (this.pipDepthView) {
+                    this.pipDepthView.style.display = 'block';
+                }
 
                 // Update button styling
                 this.depthFab.classList.add('active');
                 this.showToast('Depth PiP enabled - White=Near, Black=Far', 'layers');
             } else {
-                // Disable PiP mode
-                depthPredictionManager.pipMode = false;
+                // Hide PiP depth view
+                if (this.pipDepthView) {
+                    this.pipDepthView.style.display = 'none';
+                }
 
                 // Update button styling
                 this.depthFab.classList.remove('active');
@@ -740,6 +868,73 @@ class PoliCameraApp {
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
             this.showError('Failed to initialize depth prediction: ' + error.message);
+        }
+    }
+
+    /**
+     * Close the PiP depth view
+     */
+    closePipDepthView() {
+        if (this.pipDepthView) {
+            this.pipDepthView.style.display = 'none';
+        }
+        this.isDepthPredictionEnabled = false;
+        if (this.depthFab) {
+            this.depthFab.classList.remove('active');
+        }
+        if (window.depthPredictionManager) {
+            depthPredictionManager.toggle(); // Turn off depth prediction
+        }
+    }
+
+    /**
+     * Render the PiP depth view with inverted grayscale (white=near, black=far)
+     * @param {tf.Tensor} depthMap - The depth map tensor
+     */
+    async renderPipDepthView(depthMap) {
+        if (!this.pipDepthCanvas || !depthMap || !this.isDepthPredictionEnabled) return;
+
+        try {
+            const canvas = this.pipDepthCanvas;
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas size if not already set
+            if (canvas.width === 0 || canvas.height === 0) {
+                canvas.width = 200;
+                canvas.height = 150;
+            }
+
+            // Get depth data
+            const depthData = await depthMap.data();
+            const [depthHeight, depthWidth] = depthMap.shape;
+
+            // Create image data for the canvas
+            const imageData = ctx.createImageData(depthWidth, depthHeight);
+            const data = imageData.data;
+
+            // Convert depth to inverted grayscale (white=near, black=far)
+            for (let i = 0; i < depthData.length; i++) {
+                const pixelIndex = i * 4;
+                // Invert: 255 - value (so near objects are white, far are black)
+                const grayValue = Math.round(depthData[i]);
+                data[pixelIndex] = grayValue;     // R
+                data[pixelIndex + 1] = grayValue; // G
+                data[pixelIndex + 2] = grayValue; // B
+                data[pixelIndex + 3] = 255;       // A
+            }
+
+            // Draw to canvas (scaled to fill)
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = depthWidth;
+            tempCanvas.height = depthHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(imageData, 0, 0);
+
+            // Scale to PiP canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+        } catch (error) {
+            console.error('Failed to render PiP depth view:', error);
         }
     }
 
@@ -754,6 +949,65 @@ class PoliCameraApp {
         this.depthCanvas.height = rect.height;
 
         console.log(`📐 Depth canvas resized to ${rect.width}x${rect.height}`);
+    }
+
+    /**
+     * Update FPS counter
+     */
+    updateFPS() {
+        const now = performance.now();
+
+        // Add current frame time
+        this.fpsFrameTimes.push(now);
+
+        // Keep only last 30 frames (half second at 60fps)
+        if (this.fpsFrameTimes.length > 30) {
+            this.fpsFrameTimes.shift();
+        }
+
+        // Calculate FPS every 200ms
+        if (now - this.fpsLastUpdate > 200) {
+            if (this.fpsFrameTimes.length >= 2) {
+                const timeDiff = this.fpsFrameTimes[this.fpsFrameTimes.length - 1] - this.fpsFrameTimes[0];
+                const fps = Math.round((this.fpsFrameTimes.length - 1) / (timeDiff / 1000));
+
+                // Update display
+                if (this.fpsValue) {
+                    this.fpsValue.textContent = `${fps} FPS`;
+                }
+            }
+            this.fpsLastUpdate = now;
+        }
+    }
+
+    /**
+     * Update detection FPS counter
+     */
+    updateDetectionFPS() {
+        const now = performance.now();
+        if (this.lastDetectionTime > 0) {
+            const detectionTime = now - this.lastDetectionTime;
+            this.detectionFps = Math.round(1000 / detectionTime);
+            if (this.detectionFpsEl) {
+                this.detectionFpsEl.textContent = `AI: ${this.detectionFps}`;
+            }
+        }
+        this.lastDetectionTime = now;
+    }
+
+    /**
+     * Update depth FPS counter
+     */
+    updateDepthFPS() {
+        const now = performance.now();
+        if (this.lastDepthTime > 0) {
+            const depthTime = now - this.lastDepthTime;
+            this.depthFps = Math.round(1000 / depthTime);
+            if (this.depthFpsEl) {
+                this.depthFpsEl.textContent = `Depth: ${this.depthFps}`;
+            }
+        }
+        this.lastDepthTime = now;
     }
 
     /**
@@ -1362,8 +1616,12 @@ class PoliCameraApp {
             // Skip if video not ready
             if (this.video.readyState < 2) return;
 
+            // Update overall FPS
+            this.updateFPS();
+
             // Run optimized real-time detection directly on video element
             const detections = await aiRecognitionManager.detectObjects(this.video, true);
+            this.updateDetectionFPS();
 
             // Detect poses if enabled
             if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
@@ -1383,6 +1641,12 @@ class PoliCameraApp {
             if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
                 // Note: predictDepth handles internal tensor disposal
                 this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
+                this.updateDepthFPS();
+
+                // Update PiP depth view
+                if (this.currentDepthMap) {
+                    await this.renderPipDepthView(this.currentDepthMap);
+                }
             } else {
                 // Dispose depth map when disabling depth prediction
                 if (this.currentDepthMap) {
@@ -1467,42 +1731,54 @@ class PoliCameraApp {
             const color = window.aiRecognitionManager ?
                 aiRecognitionManager.getClassColor(className) : '#B4F222';
 
-            // Draw bounding box with thicker line and shadow for better visibility
+            // Draw edge lines instead of full bounding box
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
-            ctx.strokeRect(x, y, width, height);
 
-            // Reset shadow for corners
-            ctx.shadowBlur = 0;
+            // Calculate edge line lengths (30% of each side)
+            const edgeLength = Math.max(30, Math.min(width * 0.3, height * 0.3));
+            const cornerLength = Math.min(edgeLength, width / 3, height / 3);
 
-            // Draw corner accents for modern look - all in one path for efficiency
-            const cornerLength = Math.min(20, width / 4, height / 4);
-            ctx.lineWidth = 4;
             ctx.beginPath();
 
-            // Top-left corner
-            ctx.moveTo(x, y + cornerLength);
-            ctx.lineTo(x, y);
+            // Top edge - left portion
+            ctx.moveTo(x, y);
             ctx.lineTo(x + cornerLength, y);
 
-            // Top-right corner
+            // Top edge - right portion
             ctx.moveTo(x + width - cornerLength, y);
             ctx.lineTo(x + width, y);
-            ctx.lineTo(x + width, y + cornerLength);
 
-            // Bottom-left corner
-            ctx.moveTo(x, y + height - cornerLength);
-            ctx.lineTo(x, y + height);
+            // Bottom edge - left portion
+            ctx.moveTo(x, y + height);
             ctx.lineTo(x + cornerLength, y + height);
 
-            // Bottom-right corner
+            // Bottom edge - right portion
             ctx.moveTo(x + width - cornerLength, y + height);
             ctx.lineTo(x + width, y + height);
-            ctx.lineTo(x + width, y + height - cornerLength);
+
+            // Left edge - top portion
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + cornerLength);
+
+            // Left edge - bottom portion
+            ctx.moveTo(x, y + height - cornerLength);
+            ctx.lineTo(x, y + height);
+
+            // Right edge - top portion
+            ctx.moveTo(x + width, y);
+            ctx.lineTo(x + width, y + cornerLength);
+
+            // Right edge - bottom portion
+            ctx.moveTo(x + width, y + height - cornerLength);
+            ctx.lineTo(x + width, y + height);
 
             ctx.stroke();
+
+            // Reset shadow
+            ctx.shadowBlur = 0;
 
             // Draw label with track ID if available
             const label = trackId ? `${className} #${trackId} ${confidence}%` : `${className} ${confidence}%`;

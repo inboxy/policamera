@@ -88,6 +88,54 @@
                 </div>
             </div>
 
+            <!-- FPS Counter Overlay -->
+            <div class="fps-overlay" id="fpsOverlay">
+                <div class="fps-value" id="fpsValue">-- FPS</div>
+                <div class="fps-stats">
+                    <span id="detectionFps">AI: --</span>
+                    <span id="depthFps">Depth: --</span>
+                </div>
+            </div>
+
+            <!-- Orientation Compass Overlay -->
+            <div class="orientation-overlay" id="orientationOverlay">
+                <div class="compass">
+                    <div class="compass-arrow" id="compassArrow">
+                        <span class="material-icons">navigation</span>
+                    </div>
+                    <div class="compass-heading" id="compassHeading">0°</div>
+                </div>
+                <div class="orientation-details">
+                    <div class="orientation-row">
+                        <span class="orientation-label">Azimuth:</span>
+                        <span id="azimuthDisplay">0°</span>
+                    </div>
+                    <div class="orientation-row">
+                        <span class="orientation-label">Pitch:</span>
+                        <span id="pitchDisplay">0°</span>
+                    </div>
+                    <div class="orientation-row">
+                        <span class="orientation-label">Roll:</span>
+                        <span id="rollDisplay">0°</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Picture-in-Picture Depth View -->
+            <div class="pip-depth-view" id="pipDepthView" style="display: none;">
+                <div class="pip-header">
+                    <span class="pip-title">Depth Map</span>
+                    <button class="pip-close" id="pipCloseBtn" aria-label="Close PiP">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
+                <canvas id="pipDepthCanvas" class="pip-canvas"></canvas>
+                <div class="pip-legend">
+                    <span class="pip-legend-item"><span class="pip-legend-color" style="background: white;"></span>Near</span>
+                    <span class="pip-legend-item"><span class="pip-legend-color" style="background: black;"></span>Far</span>
+                </div>
+            </div>
+
             <!-- Captured photos overlay -->
             <div class="photos-overlay" id="photosOverlay" style="display: none;">
                 <div class="photos-header">
@@ -131,11 +179,16 @@
         <button class="fab depth-fab" id="depthFab" aria-label="Toggle depth prediction" style="display: none;">
             <span class="material-icons">layers</span>
         </button>
+
+        <button class="fab camera-switch-fab" id="cameraSwitchFab" aria-label="Switch camera" style="display: none;">
+            <span class="material-icons">cameraswitch</span>
+        </button>
     </div>
 
     <!-- External Libraries -->
     <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.0/dist/opencv.min.js" onload="opencvReady();"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>

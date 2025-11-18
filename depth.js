@@ -13,7 +13,7 @@ class DepthPredictionManager {
         this.isEnabled = false;
 
         // Performance settings - OPTIMIZED for real-time
-        this.inputSize = 128; // Reduced from 256 for 4x faster processing
+        this.inputSize = 256; // MiDaS v2.1 small requires 256x256 input
         this.targetFrameTime = 1000 / 10; // 10 FPS for depth (even more conservative)
         this.lastProcessTime = 0;
 
@@ -37,9 +37,8 @@ class DepthPredictionManager {
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
 
-        // Model URL - Using a publicly available MiDaS TFLite model
-        // Note: You'll need to host this model file or use a CDN
-        this.modelUrl = 'https://tfhub.dev/intel/lite-model/midas/v2_1_small/1/lite/1';
+        // Model URL - Using MiDaS v2.1 small TFLite model
+        this.modelUrl = 'https://github.com/isl-org/MiDaS/releases/download/v2_1/model_opt.tflite';
     }
 
     /**
@@ -68,12 +67,17 @@ class DepthPredictionManager {
         }
 
         this.isLoading = true;
-        console.log('🌊 Loading depth prediction model (lazy init)...');
+        console.log('🌊 Loading MiDaS depth prediction model (lazy init)...');
 
         try {
-            // Wait for TensorFlow.js to be ready (use existing backend)
-            // This might wait if TF.js is still loading
+            // Wait for TensorFlow.js to be ready
             while (typeof tf === 'undefined') {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // Wait for TFLite to be ready
+            while (typeof tflite === 'undefined') {
+                console.log('⏳ Waiting for TFLite to load...');
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
@@ -81,13 +85,12 @@ class DepthPredictionManager {
             const backend = tf.getBackend();
             console.log(`Using ${backend} backend for depth prediction`);
 
-            // For now, we'll use a custom approach with edge detection
-            // A proper implementation would load the actual MiDaS TFLite model
-            // This is a placeholder that demonstrates the structure
-            console.log('⚠️ Note: Using simplified depth estimation approach');
-            console.log('For production, integrate actual MiDaS TFLite model');
+            // Load MiDaS v2.1 small TFLite model
+            console.log('📥 Loading MiDaS TFLite model from:', this.modelUrl);
+            this.model = await tflite.loadTFLiteModel(this.modelUrl);
+            console.log('✅ MiDaS model loaded successfully');
 
-            // Initialize preprocessing canvas (only when needed)
+            // Initialize preprocessing canvas
             this.preprocessCanvas = document.createElement('canvas');
             this.preprocessCanvas.width = this.inputSize;
             this.preprocessCanvas.height = this.inputSize;
@@ -98,11 +101,11 @@ class DepthPredictionManager {
             this.isModelLoaded = true;
             this.isLoading = false;
 
-            console.log('✅ Depth prediction initialized (lazy loaded in ' + performance.now() + 'ms)');
+            console.log('✅ MiDaS depth prediction initialized (lazy loaded)');
             return true;
 
         } catch (error) {
-            console.error('❌ Failed to initialize depth prediction:', error);
+            console.error('❌ Failed to initialize MiDaS depth prediction:', error);
             this.isLoading = false;
             this.isModelLoaded = false;
             return false;
@@ -165,48 +168,62 @@ class DepthPredictionManager {
     }
 
     /**
-     * Simplified depth estimation using canvas operations (placeholder for actual MiDaS)
-     * This creates a depth-like effect using brightness and edge analysis
+     * MiDaS depth estimation using TFLite model
+     * Returns normalized depth map (0-255, inverted so white=near, black=far)
      */
     async estimateDepthSimplified(imageElement) {
+        if (!this.model) {
+            console.error('MiDaS model not loaded');
+            return null;
+        }
+
         try {
-            const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
+            return tf.tidy(() => {
+                // Preprocess: Draw image to 256x256 canvas
+                const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
 
-            // Draw image to preprocessing canvas at model input size
-            ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
+                // Convert to tensor and normalize to [-1, 1] (MiDaS requirement)
+                const imageTensor = tf.browser.fromPixels(this.preprocessCanvas);
+                const normalized = tf.div(
+                    tf.sub(tf.cast(imageTensor, 'float32'), 127.5),
+                    127.5
+                );
 
-            // Get image data
-            const imageData = ctx.getImageData(0, 0, this.inputSize, this.inputSize);
-            const data = imageData.data;
+                // Add batch dimension and ensure correct shape [1, 256, 256, 3]
+                const batched = tf.expandDims(normalized, 0);
 
-            // Create depth map using brightness-based estimation
-            // Brighter areas are assumed to be closer (simple heuristic)
-            const depthData = new Float32Array(this.inputSize * this.inputSize);
+                // Run MiDaS inference
+                const depthOutput = this.model.predict(batched);
 
-            for (let i = 0; i < data.length; i += 4) {
-                const pixelIndex = i / 4;
+                // Remove batch dimension
+                let depthMap = tf.squeeze(depthOutput);
 
-                // Calculate brightness (luminance)
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                // Normalize depth to 0-255 range
+                const depthMin = tf.min(depthMap);
+                const depthMax = tf.max(depthMap);
+                const depthRange = tf.sub(depthMax, depthMin);
 
-                // Simple depth heuristic: invert brightness for depth-like effect
-                // Darker areas = farther, brighter areas = closer
-                depthData[pixelIndex] = 255 - brightness;
-            }
+                // Normalize to 0-1
+                let normalizedDepth = tf.div(tf.sub(depthMap, depthMin), depthRange);
 
-            // Apply simple blur for smoothing (reduced radius for speed)
-            const blurred = this.applyBoxBlur(depthData, this.inputSize, this.inputSize, 2);
+                // IMPORTANT: Invert so white=near, black=far
+                // MiDaS outputs higher values for closer objects, so we need to invert
+                normalizedDepth = tf.sub(1.0, normalizedDepth);
 
-            // Create TensorFlow.js tensor from the depth data
-            const depthTensor = tf.tensor2d(blurred, [this.inputSize, this.inputSize]);
+                // Scale to 0-255
+                const scaledDepth = tf.mul(normalizedDepth, 255);
 
-            return depthTensor;
+                // Ensure 2D tensor
+                if (scaledDepth.shape.length > 2) {
+                    return tf.squeeze(scaledDepth);
+                }
+
+                return scaledDepth;
+            });
 
         } catch (error) {
-            console.error('Simplified depth estimation failed:', error);
+            console.error('MiDaS depth estimation failed:', error);
             return null;
         }
     }
