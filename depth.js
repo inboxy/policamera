@@ -1,20 +1,18 @@
 /**
  * Depth Prediction Manager for PoliCamera
- * Uses TensorFlow.js native depth estimation API
+ * Uses Transformers.js with Depth-Anything V2 for state-of-the-art depth estimation
  */
 
 console.log('🌊 Loading depth.js module...');
 
 class DepthPredictionManager {
     constructor() {
-        this.estimator = null; // TensorFlow.js depth estimator
+        this.estimator = null; // Transformers.js pipeline
         this.isModelLoaded = false;
         this.isLoading = false;
         this.isEnabled = false;
-        this.useFallbackMode = false; // Use simplified depth if model fails
 
         // Performance settings - OPTIMIZED for real-time
-        this.inputSize = 256;
         this.targetFrameTime = 1000 / 10; // 10 FPS for depth
         this.lastProcessTime = 0;
 
@@ -37,21 +35,24 @@ class DepthPredictionManager {
         this.cachedImageData = null;
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
+
+        // Model configuration - Using Depth-Anything V2 Small (fast, accurate, SOTA)
+        this.modelName = 'Xenova/depth-anything-small';
+
+        // Transformers.js pipeline library
+        this.transformers = null;
     }
 
     /**
      * Check if depth prediction is supported
      */
     isSupported() {
-        const supported = typeof tf !== 'undefined';
-        if (!supported) {
-            console.warn('⚠️ TensorFlow.js not yet available for depth prediction');
-        }
-        return supported;
+        // Transformers.js works in all modern browsers
+        return true;
     }
 
     /**
-     * Initialize the depth prediction model (LAZY LOADED)
+     * Initialize the Transformers.js depth prediction pipeline
      */
     async initializeModel() {
         if (this.isModelLoaded || this.isLoading) {
@@ -59,86 +60,68 @@ class DepthPredictionManager {
             return this.isModelLoaded;
         }
 
-        if (!this.isSupported()) {
-            console.error('TensorFlow.js not available');
-            return false;
-        }
-
         this.isLoading = true;
-        console.log('🌊 Loading TensorFlow.js depth estimation model...');
+        console.log('🌊 Loading Depth-Anything V2 model via Transformers.js...');
 
         try {
-            // Wait for TensorFlow.js to be ready
-            let tfWaitCount = 0;
-            while (typeof tf === 'undefined') {
-                if (tfWaitCount++ > 50) {
-                    throw new Error('TensorFlow.js failed to load after 5 seconds');
+            // Dynamically import Transformers.js (ES modules)
+            console.log('📦 Loading Transformers.js library...');
+            this.transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+            console.log('✅ Transformers.js library loaded');
+
+            // Create depth estimation pipeline
+            console.log('📥 Loading Depth-Anything V2 model (first load may take ~30s)...');
+            console.log('ℹ️  Model will be cached for future use');
+
+            this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
+                device: 'webgpu', // Use WebGPU for acceleration, falls back to WASM
+                dtype: 'fp32',
+                progress_callback: (progress) => {
+                    if (progress.status === 'progress') {
+                        const percent = Math.round((progress.loaded / progress.total) * 100);
+                        console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
+                    } else if (progress.status === 'done') {
+                        console.log(`✅ Downloaded ${progress.file}`);
+                    }
                 }
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            });
 
-            // Wait for depth estimation API to be ready
-            let depthWaitCount = 0;
-            while (typeof depthEstimation === 'undefined') {
-                if (depthWaitCount++ > 50) {
-                    console.warn('⚠️ Depth estimation API failed to load, falling back to simplified depth estimation');
-                    this.useFallbackMode = true;
-                    break;
-                }
-                console.log('⏳ Waiting for depth estimation API to load...');
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-
-            await tf.ready();
-            const backend = tf.getBackend();
-            console.log(`Using ${backend} backend for depth prediction`);
-
-            // Try to load the TensorFlow.js depth model
-            if (!this.useFallbackMode && typeof depthEstimation !== 'undefined') {
-                try {
-                    console.log('📥 Loading ARPortraitDepth model...');
-
-                    // Create depth estimator with ARPortraitDepth model
-                    this.estimator = await depthEstimation.createEstimator(
-                        depthEstimation.SupportedModels.ARPortraitDepth,
-                        {
-                            outputDepthRange: [0, 1],
-                            outputStride: 16
-                        }
-                    );
-
-                    console.log('✅ TensorFlow.js depth model loaded successfully');
-                } catch (modelError) {
-                    console.error('❌ Failed to load TensorFlow.js depth model:', modelError);
-                    console.log('⚠️ Falling back to simplified depth estimation');
-                    this.useFallbackMode = true;
-                    this.estimator = null;
-                }
-            } else {
-                console.log('ℹ️ Using fallback depth estimation (depth API not available)');
-            }
-
-            // Initialize preprocessing canvas
+            // Initialize canvases
             this.preprocessCanvas = document.createElement('canvas');
-            this.preprocessCanvas.width = this.inputSize;
-            this.preprocessCanvas.height = this.inputSize;
-
-            // Initialize color map canvas
             this.colorMapCanvas = document.createElement('canvas');
 
             this.isModelLoaded = true;
             this.isLoading = false;
 
-            const mode = this.useFallbackMode ? 'fallback mode' : 'TensorFlow.js ARPortraitDepth';
-            console.log(`✅ Depth prediction initialized (${mode})`);
+            console.log('✅ Depth-Anything V2 model loaded successfully');
+            console.log('🚀 Using WebGPU acceleration for depth estimation');
             return true;
 
         } catch (error) {
-            console.error('❌ Failed to initialize depth prediction:', error);
+            console.error('❌ Failed to initialize Depth-Anything V2:', error);
             console.error('Error details:', {
                 message: error.message,
                 stack: error.stack
             });
+
+            // Fallback: try without WebGPU
+            if (error.message?.includes('webgpu')) {
+                console.log('⚠️ WebGPU not available, trying CPU fallback...');
+                try {
+                    this.estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
+                        device: 'wasm',
+                        dtype: 'fp32'
+                    });
+
+                    this.isModelLoaded = true;
+                    this.isLoading = false;
+                    console.log('✅ Depth model loaded (CPU mode)');
+                    return true;
+                } catch (fallbackError) {
+                    console.error('❌ CPU fallback also failed:', fallbackError);
+                }
+            }
+
             this.isLoading = false;
             this.isModelLoaded = false;
             return false;
@@ -162,11 +145,10 @@ class DepthPredictionManager {
     }
 
     /**
-     * Predict depth from image (simplified version)
-     * In production, this would use actual MiDaS model
+     * Predict depth from image using Transformers.js
      */
     async predictDepth(imageElement, isRealTime = false) {
-        if (!this.isModelLoaded) {
+        if (!this.isModelLoaded || !this.estimator) {
             return null;
         }
 
@@ -180,19 +162,26 @@ class DepthPredictionManager {
         }
 
         try {
-            // Dispose previous cached depth map to prevent memory leak
-            if (this.lastDepthMap) {
+            // Dispose previous depth map to prevent memory leak
+            if (this.lastDepthMap && this.lastDepthMap.dispose) {
                 this.lastDepthMap.dispose();
                 this.lastDepthMap = null;
             }
 
-            // Use canvas-based depth estimation (no TensorFlow.js required)
-            const depthMap = await this.estimateDepthSimplified(imageElement);
+            // Run depth estimation with Transformers.js
+            const output = await this.estimator(imageElement);
+
+            // Extract depth tensor from output
+            // Transformers.js returns { predicted_depth: Tensor, depth: RawImage }
+            const depthTensor = output.predicted_depth;
+
+            // Convert to normalized 0-255 tensor (inverted: white=near, black=far)
+            const normalizedDepth = await this.normalizeDepthTensor(depthTensor);
 
             // Cache result
-            this.lastDepthMap = depthMap;
+            this.lastDepthMap = normalizedDepth;
 
-            return depthMap;
+            return normalizedDepth;
 
         } catch (error) {
             console.error('Depth prediction failed:', error);
@@ -201,183 +190,56 @@ class DepthPredictionManager {
     }
 
     /**
-     * Depth estimation using TensorFlow.js model or fallback method
-     * Returns normalized depth map (0-255, inverted so white=near, black=far)
+     * Normalize depth tensor to 0-255 range with inversion (white=near, black=far)
      */
-    async estimateDepthSimplified(imageElement) {
+    async normalizeDepthTensor(depthTensor) {
+        if (!depthTensor) return null;
+
         try {
-            // Use TensorFlow.js depth model if available
-            if (this.estimator && !this.useFallbackMode) {
-                return await this.estimateDepthWithTensorFlowJS(imageElement);
+            // Get raw depth data
+            const depthData = await depthTensor.data();
+            const [height, width] = depthTensor.dims.slice(-2);
+
+            // Find min/max for normalization
+            let min = Infinity;
+            let max = -Infinity;
+            for (let i = 0; i < depthData.length; i++) {
+                if (depthData[i] < min) min = depthData[i];
+                if (depthData[i] > max) max = depthData[i];
             }
 
-            // Otherwise use fallback method
-            return await this.estimateDepthFallback(imageElement);
+            // Create normalized and inverted depth data (white=near, black=far)
+            const normalizedData = new Float32Array(depthData.length);
+            const range = max - min;
+
+            if (range > 0) {
+                for (let i = 0; i < depthData.length; i++) {
+                    // Normalize to 0-1
+                    const normalized = (depthData[i] - min) / range;
+                    // Invert (1 - normalized) so near is bright, far is dark
+                    const inverted = 1.0 - normalized;
+                    // Scale to 0-255
+                    normalizedData[i] = inverted * 255;
+                }
+            }
+
+            // Create a simple tensor-like object for compatibility
+            // (We use TensorFlow.js tf.tensor2d for compatibility with rendering code)
+            if (typeof tf !== 'undefined') {
+                return tf.tensor2d(normalizedData, [height, width]);
+            } else {
+                // Fallback: return simple object
+                return {
+                    data: () => Promise.resolve(normalizedData),
+                    shape: [height, width],
+                    dispose: () => {} // No-op disposal
+                };
+            }
 
         } catch (error) {
-            console.error('Depth estimation failed:', error);
-            // Fall back to simplified method if TF.js model fails
-            return await this.estimateDepthFallback(imageElement);
+            console.error('Failed to normalize depth tensor:', error);
+            return null;
         }
-    }
-
-    /**
-     * TensorFlow.js native depth estimation using ARPortraitDepth
-     */
-    async estimateDepthWithTensorFlowJS(imageElement) {
-        try {
-            // Run depth estimation
-            const depthResult = await this.estimator.estimateDepth(imageElement, {
-                minDepth: 0,
-                maxDepth: 1
-            });
-
-            // Convert to tensor
-            const depthTensor = depthResult.toTensor();
-
-            return tf.tidy(() => {
-                // Ensure 2D tensor
-                let depth2D = depthTensor.shape.length > 2 ? tf.squeeze(depthTensor) : depthTensor;
-
-                // Normalize to 0-255 range
-                const depthMin = tf.min(depth2D);
-                const depthMax = tf.max(depth2D);
-                const depthRange = tf.sub(depthMax, depthMin);
-
-                // Normalize to 0-1
-                let normalized = tf.div(tf.sub(depth2D, depthMin), depthRange);
-
-                // IMPORTANT: Invert so white=near, black=far
-                // ARPortraitDepth outputs higher values for closer objects
-                normalized = tf.sub(1.0, normalized);
-
-                // Scale to 0-255
-                const scaled = tf.mul(normalized, 255);
-
-                // Dispose the original tensor
-                depthTensor.dispose();
-
-                return scaled;
-            });
-
-        } catch (error) {
-            console.error('TensorFlow.js depth estimation failed:', error);
-            throw error; // Let the parent method handle fallback
-        }
-    }
-
-    /**
-     * Fallback depth estimation using edge detection and brightness analysis
-     * Provides reasonable depth-like visualization when TFLite is unavailable
-     */
-    async estimateDepthFallback(imageElement) {
-        return tf.tidy(() => {
-            const ctx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
-
-            // Draw image to preprocessing canvas
-            ctx.drawImage(imageElement, 0, 0, this.inputSize, this.inputSize);
-
-            // Get image tensor
-            const imageTensor = tf.browser.fromPixels(this.preprocessCanvas);
-
-            // Convert to grayscale (weighted luminance)
-            const grayscale = tf.mean(imageTensor, 2);
-
-            // Apply Sobel edge detection for depth cues
-            const sobelX = tf.tensor2d([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], [3, 3]);
-            const sobelY = tf.tensor2d([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], [3, 3]);
-
-            // Expand dimensions for conv2d
-            const input = tf.expandDims(tf.expandDims(grayscale, 0), -1);
-            const kernelX = tf.expandDims(tf.expandDims(sobelX, -1), -1);
-            const kernelY = tf.expandDims(tf.expandDims(sobelY, -1), -1);
-
-            // Apply edge detection
-            const edgesX = tf.conv2d(input, kernelX, 1, 'same');
-            const edgesY = tf.conv2d(input, kernelY, 1, 'same');
-
-            // Compute edge magnitude
-            const edgeMagnitude = tf.sqrt(tf.add(tf.square(edgesX), tf.square(edgesY)));
-            const edges = tf.squeeze(edgeMagnitude);
-
-            // Combine edges with inverted brightness for depth-like effect
-            // Bright areas + edges = closer, dark areas + no edges = farther
-            const invertedBrightness = tf.sub(255, grayscale);
-
-            // Weighted combination (70% brightness, 30% edges)
-            const depth = tf.add(
-                tf.mul(invertedBrightness, 0.7),
-                tf.mul(edges, 0.3)
-            );
-
-            // Normalize to 0-255
-            const depthMin = tf.min(depth);
-            const depthMax = tf.max(depth);
-            const depthRange = tf.sub(depthMax, depthMin);
-            const normalized = tf.div(tf.sub(depth, depthMin), depthRange);
-            const scaled = tf.mul(normalized, 255);
-
-            // Apply slight blur for smoothing
-            const blurKernel = tf.div(tf.ones([5, 5, 1, 1]), 25);
-            const blurred = tf.conv2d(
-                tf.expandDims(tf.expandDims(scaled, 0), -1),
-                blurKernel,
-                1,
-                'same'
-            );
-
-            return tf.squeeze(blurred);
-        });
-    }
-
-    /**
-     * Apply separable box blur for smoothing depth map (OPTIMIZED)
-     * Uses two 1D passes instead of 2D kernel for O(n*radius) instead of O(n*radius²)
-     */
-    applyBoxBlur(data, width, height, radius) {
-        // Use separable filter: horizontal pass then vertical pass
-        const temp = new Float32Array(data.length);
-        const result = new Float32Array(data.length);
-
-        // Horizontal pass
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                let sum = 0;
-                let count = 0;
-
-                // Sample horizontal kernel
-                for (let kx = -radius; kx <= radius; kx++) {
-                    const px = x + kx;
-                    if (px >= 0 && px < width) {
-                        sum += data[y * width + px];
-                        count++;
-                    }
-                }
-
-                temp[y * width + x] = sum / count;
-            }
-        }
-
-        // Vertical pass on horizontal-blurred data
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                let sum = 0;
-                let count = 0;
-
-                // Sample vertical kernel
-                for (let ky = -radius; ky <= radius; ky++) {
-                    const py = y + ky;
-                    if (py >= 0 && py < height) {
-                        sum += temp[py * width + x];
-                        count++;
-                    }
-                }
-
-                result[y * width + x] = sum / count;
-            }
-        }
-
-        return result;
     }
 
     /**
@@ -416,510 +278,175 @@ class DepthPredictionManager {
      * Apply color mapping to depth values
      */
     applyColorMap(value, mode = 'inferno') {
-        // Normalize value to [0, 1]
+        // Normalize value to 0-1 range
         const normalized = value / 255;
 
+        // Apply color map
         switch (mode) {
             case 'inferno':
-                return this.infernoColormap(normalized);
-
-            case 'magma':
-                return this.magmaColormap(normalized);
-
-            case 'distance':
-                return this.distanceColormap(normalized);
-
+                return this.infernoColorMap(normalized);
+            case 'viridis':
+                return this.viridisColorMap(normalized);
+            case 'plasma':
+                return this.plasmaColorMap(normalized);
             case 'grayscale':
                 return [value, value, value];
-
-            case 'turbo':
-                return this.turboColormap(normalized);
-
-            case 'plasma':
-                return this.plasmaColormap(normalized);
-
-            case 'viridis':
-                return this.viridisColormap(normalized);
-
             default:
-                return this.infernoColormap(normalized);
+                return this.infernoColorMap(normalized);
         }
     }
 
     /**
-     * Distance colormap - Green (near) to Red (far)
-     * Optimized for depth visualization
+     * Inferno color map (perceptually uniform, good for depth)
      */
-    distanceColormap(value) {
-        // value: 0 = close (green), 1 = far (red)
+    infernoColorMap(value) {
+        // Simplified inferno colormap
+        const r = Math.min(255, Math.max(0, 255 * (1.5 * value - 0.3)));
+        const g = Math.min(255, Math.max(0, 255 * (1.5 * value - 0.5)));
+        const b = Math.min(255, Math.max(0, 255 * (2.0 * value - 1.0)));
+        return [r, g, b];
+    }
 
-        // Light green for near: RGB(144, 238, 144)
-        // Yellow-ish middle: RGB(255, 255, 0)
-        // Orange middle-far: RGB(255, 165, 0)
-        // Dark red for far: RGB(139, 0, 0)
+    /**
+     * Viridis color map
+     */
+    viridisColorMap(value) {
+        const r = Math.min(255, Math.max(0, 255 * (0.26 + 1.0 * value)));
+        const g = Math.min(255, Math.max(0, 255 * (0.0 + 1.2 * value)));
+        const b = Math.min(255, Math.max(0, 255 * (0.33 + 0.8 * value)));
+        return [r, g, b];
+    }
 
-        if (value < 0.33) {
-            // Green to Yellow (near to middle-near)
-            const t = value / 0.33;
-            const r = Math.round(144 + (255 - 144) * t);
-            const g = Math.round(238 + (255 - 238) * t);
-            const b = Math.round(144 - 144 * t);
-            return [r, g, b];
-        } else if (value < 0.67) {
-            // Yellow to Orange (middle-near to middle-far)
-            const t = (value - 0.33) / 0.34;
-            const r = 255;
-            const g = Math.round(255 - (255 - 165) * t);
-            const b = 0;
-            return [r, g, b];
-        } else {
-            // Orange to Dark Red (middle-far to far)
-            const t = (value - 0.67) / 0.33;
-            const r = Math.round(255 - (255 - 139) * t);
-            const g = Math.round(165 - 165 * t);
-            const b = 0;
-            return [r, g, b];
+    /**
+     * Plasma color map
+     */
+    plasmaColorMap(value) {
+        const r = Math.min(255, Math.max(0, 255 * (0.5 + 0.8 * value)));
+        const g = Math.min(255, Math.max(0, 255 * (0.0 + 1.0 * value * value)));
+        const b = Math.min(255, Math.max(0, 255 * (0.5 + 0.5 * value)));
+        return [r, g, b];
+    }
+
+    /**
+     * Render depth map to canvas with color mapping
+     */
+    async renderDepthMap(canvas, depthMap, opacity = 0.7) {
+        if (!canvas || !depthMap) return;
+
+        const ctx = canvas.getContext('2d');
+        const depthData = await depthMap.data();
+        const [depthHeight, depthWidth] = depthMap.shape || [canvas.height, canvas.width];
+
+        // Resize canvas if needed
+        if (canvas.width !== depthWidth || canvas.height !== depthHeight) {
+            canvas.width = depthWidth;
+            canvas.height = depthHeight;
         }
-    }
 
-    /**
-     * Turbo colormap (similar to matplotlib's turbo)
-     */
-    turboColormap(value) {
-        const r = Math.max(0, Math.min(255,
-            34.61 + value * (1172.33 - value * (10793.56 - value * (33300.12 - value * (38394.49 - value * 14825.05))))
-        ));
-        const g = Math.max(0, Math.min(255,
-            23.31 + value * (557.33 + value * (1225.33 - value * (3574.96 - value * (1073.77 + value * 707.56))))
-        ));
-        const b = Math.max(0, Math.min(255,
-            27.2 + value * (3211.1 - value * (15327.97 - value * (27814.0 - value * (22569.18 - value * 6838.66))))
-        ));
-
-        return [Math.round(r), Math.round(g), Math.round(b)];
-    }
-
-    /**
-     * Plasma colormap
-     */
-    plasmaColormap(value) {
-        const r = Math.round(255 * (0.05 + 0.5 * value + 0.5 * Math.sin(3.14 * value)));
-        const g = Math.round(255 * (0.1 + 0.7 * Math.pow(value, 1.5)));
-        const b = Math.round(255 * (0.9 - 0.9 * value));
-        return [r, g, b];
-    }
-
-    /**
-     * Viridis colormap
-     */
-    viridisColormap(value) {
-        const r = Math.round(255 * (0.267 + 0.005 * value + 0.3 * Math.pow(value, 2)));
-        const g = Math.round(255 * (0.004 + 0.4 * value + 0.4 * Math.pow(value, 2)));
-        const b = Math.round(255 * (0.329 + 0.6 * value - 0.5 * Math.pow(value, 2)));
-        return [r, g, b];
-    }
-
-    /**
-     * Inferno colormap (perceptually uniform, commonly used in MiDaS demos)
-     * Dark purple/black (far) -> Red -> Orange -> Yellow -> White (near)
-     */
-    infernoColormap(value) {
-        // Accurate polynomial approximation of matplotlib's inferno colormap
-        const v2 = value * value;
-        const v3 = v2 * value;
-        const v4 = v3 * value;
-
-        const r = Math.max(0, Math.min(255, Math.round(255 * (
-            -0.01948 + 4.55301 * value - 9.53334 * v2 + 12.1836 * v3 - 5.36298 * v4
-        ))));
-
-        const g = Math.max(0, Math.min(255, Math.round(255 * (
-            0.00509 + 0.56132 * value + 4.77655 * v2 - 9.65387 * v3 + 5.54818 * v4
-        ))));
-
-        const b = Math.max(0, Math.min(255, Math.round(255 * (
-            0.01884 + 2.22766 * value - 12.7604 * v2 + 27.1828 * v3 - 21.7499 * v4
-        ))));
-
-        return [r, g, b];
-    }
-
-    /**
-     * Magma colormap (perceptually uniform, commonly used in depth visualization)
-     * Dark purple/black (far) -> Purple -> Pink -> Orange -> Yellow (near)
-     */
-    magmaColormap(value) {
-        // Accurate polynomial approximation of matplotlib's magma colormap
-        const v2 = value * value;
-        const v3 = v2 * value;
-        const v4 = v3 * value;
-
-        const r = Math.max(0, Math.min(255, Math.round(255 * (
-            -0.00178 + 3.10162 * value - 5.53112 * v2 + 8.67094 * v3 - 4.58736 * v4
-        ))));
-
-        const g = Math.max(0, Math.min(255, Math.round(255 * (
-            0.00420 + 0.35156 * value + 2.29152 * v2 - 4.79591 * v3 + 3.10803 * v4
-        ))));
-
-        const b = Math.max(0, Math.min(255, Math.round(255 * (
-            0.01506 + 3.48940 * value - 17.8304 * v2 + 36.3805 * v3 - 26.4538 * v4
-        ))));
-
-        return [r, g, b];
-    }
-
-    /**
-     * Render depth map to canvas with color mapping (OPTIMIZED)
-     */
-    async renderDepthMap(ctx, depthMap, width, height, opacity = 0.6) {
-        if (!depthMap) return;
-
-        try {
-            // Resize canvas if needed
-            if (this.colorMapCanvas.width !== width || this.colorMapCanvas.height !== height) {
-                this.colorMapCanvas.width = width;
-                this.colorMapCanvas.height = height;
-            }
-
-            const colorCtx = this.colorMapCanvas.getContext('2d', { willReadFrequently: true });
-
-            // Get depth data
-            const depthData = await depthMap.data();
-            const depthWidth = depthMap.shape[1];
-            const depthHeight = depthMap.shape[0];
-
-            // Create or reuse ImageData (OPTIMIZATION)
-            if (!this.cachedImageData ||
-                this.cachedDepthWidth !== depthWidth ||
-                this.cachedDepthHeight !== depthHeight) {
-                this.cachedImageData = colorCtx.createImageData(depthWidth, depthHeight);
-                this.cachedDepthWidth = depthWidth;
-                this.cachedDepthHeight = depthHeight;
-            }
-
-            const imageData = this.cachedImageData;
-            const data = imageData.data;
-
-            // Apply color mapping (optimized with direct array access)
-            for (let i = 0; i < depthData.length; i++) {
-                const pixelIndex = i * 4;
-                const depthValue = depthData[i];
-                const normalized = depthValue / 255;
-
-                // Inline color mapping for most common modes for speed
-                if (this.colorMode === 'inferno') {
-                    // Optimized inline inferno colormap (MiDaS default)
-                    const v2 = normalized * normalized;
-                    const v3 = v2 * normalized;
-                    const v4 = v3 * normalized;
-                    data[pixelIndex] = Math.max(0, Math.min(255, Math.round(255 * (
-                        -0.01948 + 4.55301 * normalized - 9.53334 * v2 + 12.1836 * v3 - 5.36298 * v4
-                    ))));
-                    data[pixelIndex + 1] = Math.max(0, Math.min(255, Math.round(255 * (
-                        0.00509 + 0.56132 * normalized + 4.77655 * v2 - 9.65387 * v3 + 5.54818 * v4
-                    ))));
-                    data[pixelIndex + 2] = Math.max(0, Math.min(255, Math.round(255 * (
-                        0.01884 + 2.22766 * normalized - 12.7604 * v2 + 27.1828 * v3 - 21.7499 * v4
-                    ))));
-                } else if (this.colorMode === 'magma') {
-                    // Optimized inline magma colormap
-                    const v2 = normalized * normalized;
-                    const v3 = v2 * normalized;
-                    const v4 = v3 * normalized;
-                    data[pixelIndex] = Math.max(0, Math.min(255, Math.round(255 * (
-                        -0.00178 + 3.10162 * normalized - 5.53112 * v2 + 8.67094 * v3 - 4.58736 * v4
-                    ))));
-                    data[pixelIndex + 1] = Math.max(0, Math.min(255, Math.round(255 * (
-                        0.00420 + 0.35156 * normalized + 2.29152 * v2 - 4.79591 * v3 + 3.10803 * v4
-                    ))));
-                    data[pixelIndex + 2] = Math.max(0, Math.min(255, Math.round(255 * (
-                        0.01506 + 3.48940 * normalized - 17.8304 * v2 + 36.3805 * v3 - 26.4538 * v4
-                    ))));
-                } else if (this.colorMode === 'distance') {
-                    // Optimized inline distance colormap: Green (near) to Red (far)
-                    if (normalized < 0.33) {
-                        const t = normalized / 0.33;
-                        data[pixelIndex] = Math.round(144 + (255 - 144) * t);
-                        data[pixelIndex + 1] = Math.round(238 + (255 - 238) * t);
-                        data[pixelIndex + 2] = Math.round(144 - 144 * t);
-                    } else if (normalized < 0.67) {
-                        const t = (normalized - 0.33) / 0.34;
-                        data[pixelIndex] = 255;
-                        data[pixelIndex + 1] = Math.round(255 - (255 - 165) * t);
-                        data[pixelIndex + 2] = 0;
-                    } else {
-                        const t = (normalized - 0.67) / 0.33;
-                        data[pixelIndex] = Math.round(255 - (255 - 139) * t);
-                        data[pixelIndex + 1] = Math.round(165 - 165 * t);
-                        data[pixelIndex + 2] = 0;
-                    }
-                } else if (this.colorMode === 'turbo') {
-                    // Inline turbo colormap for speed
-                    data[pixelIndex] = Math.round(Math.max(0, Math.min(255,
-                        34.61 + normalized * (1172.33 - normalized * (10793.56 - normalized * (33300.12 - normalized * (38394.49 - normalized * 14825.05))))
-                    )));
-                    data[pixelIndex + 1] = Math.round(Math.max(0, Math.min(255,
-                        23.31 + normalized * (557.33 + normalized * (1225.33 - normalized * (3574.96 - normalized * (1073.77 + normalized * 707.56))))
-                    )));
-                    data[pixelIndex + 2] = Math.round(Math.max(0, Math.min(255,
-                        27.2 + normalized * (3211.1 - normalized * (15327.97 - normalized * (27814.0 - normalized * (22569.18 - normalized * 6838.66))))
-                    )));
-                } else {
-                    // Fallback to method call for other modes
-                    const [r, g, b] = this.applyColorMap(depthValue, this.colorMode);
-                    data[pixelIndex] = r;
-                    data[pixelIndex + 1] = g;
-                    data[pixelIndex + 2] = b;
-                }
-                data[pixelIndex + 3] = 255; // Full alpha
-            }
-
-            // Draw to color map canvas
-            colorCtx.putImageData(imageData, 0, 0);
-
-            // Draw scaled to main canvas with opacity
-            ctx.globalAlpha = opacity;
-            ctx.drawImage(this.colorMapCanvas, 0, 0, width, height);
-            ctx.globalAlpha = 1.0;
-
-            // Analyze depth statistics for display
-            if (this.showAvgDepth) {
-                await this.analyzeDepth(depthMap);
-                this.drawDepthStats(ctx, width, height);
-            }
-
-            // Draw "DEPTH ACTIVE" indicator in top-right
-            this.drawActiveIndicator(ctx, width, height);
-
-        } catch (error) {
-            console.error('Failed to render depth map:', error);
+        // Create or reuse ImageData
+        if (!this.cachedImageData ||
+            this.cachedDepthWidth !== depthWidth ||
+            this.cachedDepthHeight !== depthHeight) {
+            this.cachedImageData = ctx.createImageData(depthWidth, depthHeight);
+            this.cachedDepthWidth = depthWidth;
+            this.cachedDepthHeight = depthHeight;
         }
+
+        const imageData = this.cachedImageData;
+        const data = imageData.data;
+
+        // Apply color mapping to each pixel
+        for (let i = 0; i < depthData.length; i++) {
+            const pixelIndex = i * 4;
+            const depthValue = depthData[i];
+
+            // Apply color map
+            const [r, g, b] = this.applyColorMap(depthValue, this.colorMode);
+
+            data[pixelIndex] = r;
+            data[pixelIndex + 1] = g;
+            data[pixelIndex + 2] = b;
+            data[pixelIndex + 3] = opacity * 255;
+        }
+
+        // Render to canvas
+        ctx.putImageData(imageData, 0, 0);
     }
 
     /**
-     * Draw depth statistics on canvas
+     * Render depth stats overlay
      */
-    drawDepthStats(ctx, width, height) {
-        const padding = 12;
+    renderDepthStats(canvas, stats) {
+        if (!canvas || !stats) return;
 
-        // Adjust positioning and size for narrow screens to prevent overlap
-        const isNarrowScreen = width < 400;
-        const boxWidth = isNarrowScreen ? 160 : 200;
-        const boxHeight = isNarrowScreen ? 65 : 75;
+        const ctx = canvas.getContext('2d');
 
-        const x = padding;
-        const y = isNarrowScreen ? padding + 45 : padding + 50; // Top-left, avoiding "DEPTH ACTIVE" indicator
+        // Position stats box in top-left corner
+        const boxX = 20;
+        const boxY = 80;
+        const boxWidth = 180;
+        const boxHeight = 80;
 
-        // Helper function to draw rounded rectangle (polyfill for older browsers)
-        const drawRoundedRect = (x, y, width, height, radius) => {
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-        };
+        // Draw semi-transparent background
+        ctx.fillStyle = 'rgba(20, 21, 20, 0.9)';
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-        // Background with border
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-        drawRoundedRect(x, y, boxWidth, boxHeight, 8);
-        ctx.fill();
-
-        // Border
-        ctx.strokeStyle = 'rgba(27, 194, 152, 0.8)'; // Turquoise border for depth
+        // Draw border
+        ctx.strokeStyle = 'rgba(180, 242, 34, 0.6)';
         ctx.lineWidth = 2;
-        drawRoundedRect(x, y, boxWidth, boxHeight, 8);
-        ctx.stroke();
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-        // Text with responsive font sizes
-        const titleFontSize = isNarrowScreen ? 12 : 14;
-        const mainFontSize = isNarrowScreen ? 10 : 12;
-        const subFontSize = isNarrowScreen ? 9 : 11;
-
-        ctx.font = `bold ${titleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        ctx.fillStyle = '#90EE90'; // Light green color to match near objects
-
-        const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
-        const rangeText = `Range: ${this.minDepth.toFixed(0)}-${this.maxDepth.toFixed(0)}`;
-
-        // Display colormap mode
-        const colorModeLabels = {
-            'inferno': '🟣 Inferno (Dark→Bright)',
-            'magma': '🟣 Magma (Dark→Yellow)',
-            'distance': '🟢 Near → 🔴 Far',
-            'turbo': '🌈 Turbo Colormap',
-            'plasma': '🔵 Plasma Colormap',
-            'viridis': '🟢 Viridis Colormap',
-            'grayscale': '⚫ Grayscale'
-        };
-        const modeText = colorModeLabels[this.colorMode] || `Mode: ${this.colorMode}`;
-
-        ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
-        ctx.font = `${mainFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(avgText, x + 10, y + 42);
-        ctx.fillText(rangeText, x + 10, y + 58);
-        ctx.font = `${subFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillText(modeText, x + 10, isNarrowScreen ? y + 58 : y + 72);
-    }
-
-    /**
-     * Draw active indicator in top-right corner
-     */
-    drawActiveIndicator(ctx, width, height) {
-        const padding = 12;
-
-        // Adjust size for narrow screens
-        const isNarrowScreen = width < 400;
-        const boxWidth = isNarrowScreen ? 110 : 140;
-        const boxHeight = isNarrowScreen ? 28 : 32;
-
-        const x = width - boxWidth - padding;
-        const y = padding;
-
-        // Helper function for rounded rectangle
-        const drawRoundedRect = (x, y, width, height, radius) => {
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-        };
-
-        // Gradient background based on current colormap
-        const gradient = ctx.createLinearGradient(x, y, x + boxWidth, y);
-
-        if (this.colorMode === 'inferno') {
-            // Inferno gradient: Dark purple → Red → Orange → Yellow
-            gradient.addColorStop(0, 'rgba(0, 0, 4, 0.9)'); // Dark purple/black
-            gradient.addColorStop(0.3, 'rgba(87, 16, 110, 0.9)'); // Purple
-            gradient.addColorStop(0.5, 'rgba(188, 55, 84, 0.9)'); // Red
-            gradient.addColorStop(0.7, 'rgba(249, 142, 9, 0.9)'); // Orange
-            gradient.addColorStop(1, 'rgba(252, 255, 164, 0.9)'); // Light yellow
-        } else if (this.colorMode === 'magma') {
-            // Magma gradient: Dark → Purple → Pink → Orange → Yellow
-            gradient.addColorStop(0, 'rgba(0, 0, 4, 0.9)'); // Dark
-            gradient.addColorStop(0.3, 'rgba(80, 18, 123, 0.9)'); // Purple
-            gradient.addColorStop(0.5, 'rgba(182, 54, 121, 0.9)'); // Pink
-            gradient.addColorStop(0.7, 'rgba(251, 136, 97, 0.9)'); // Orange
-            gradient.addColorStop(1, 'rgba(252, 253, 191, 0.9)'); // Yellow
-        } else if (this.colorMode === 'distance') {
-            // Distance gradient: Green → Yellow → Red
-            gradient.addColorStop(0, 'rgba(144, 238, 144, 0.9)'); // Light green
-            gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.9)'); // Yellow
-            gradient.addColorStop(1, 'rgba(139, 0, 0, 0.9)'); // Dark red
-        } else {
-            // Default colorful gradient for other modes
-            gradient.addColorStop(0, 'rgba(68, 1, 84, 0.9)'); // Viridis start
-            gradient.addColorStop(0.5, 'rgba(33, 145, 140, 0.9)'); // Viridis mid
-            gradient.addColorStop(1, 'rgba(253, 231, 37, 0.9)'); // Viridis end
-        }
-
-        ctx.fillStyle = gradient;
-        drawRoundedRect(x, y, boxWidth, boxHeight, 6);
-        ctx.fill();
-
-        // Text with responsive font size
-        const fontSize = isNarrowScreen ? 11 : 13;
-        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        // Use white text for inferno/magma (dark backgrounds), black for others
-        ctx.fillStyle = (this.colorMode === 'inferno' || this.colorMode === 'magma') ? '#FFFFFF' : '#000000';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const text = isNarrowScreen ? '🌊 DEPTH' : '🌊 DEPTH ACTIVE';
-        ctx.fillText(text, x + boxWidth / 2, y + boxHeight / 2);
-
-        // Reset text alignment
+        // Draw text
+        ctx.fillStyle = '#B4F222';
+        ctx.font = 'bold 12px "Doto", monospace';
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
+
+        ctx.fillText('DEPTH MAP', boxX + 10, boxY + 20);
+
+        ctx.font = '10px "Doto", monospace';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(`Avg: ${stats.average.toFixed(1)}`, boxX + 10, boxY + 40);
+        ctx.fillText(`Min: ${stats.min.toFixed(1)}`, boxX + 10, boxY + 55);
+        ctx.fillText(`Max: ${stats.max.toFixed(1)}`, boxX + 10, boxY + 70);
     }
 
     /**
-     * Change color mode
+     * Cleanup resources
      */
-    setColorMode(mode) {
-        const validModes = ['inferno', 'magma', 'distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
-        if (validModes.includes(mode)) {
-            this.colorMode = mode;
-            console.log('Depth color mode:', mode);
-        }
-    }
+    async cleanup() {
+        console.log('🧹 Cleaning up depth prediction resources...');
 
-    /**
-     * Export depth data for photo metadata
-     */
-    async exportDepthData(depthMap) {
-        if (!depthMap) return null;
+        this.isEnabled = false;
+        this.isModelLoaded = false;
 
-        const stats = await this.analyzeDepth(depthMap);
+        // Wait a frame for any pending operations
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-        return {
-            average: stats.average,
-            min: stats.min,
-            max: stats.max,
-            colorMode: this.colorMode,
-            timestamp: Date.now()
-        };
-    }
-
-    /**
-     * Clean up resources
-     */
-    cleanup() {
-        if (this.model) {
-            this.model.dispose();
-            this.model = null;
-        }
-
+        // Dispose last depth map
         if (this.lastDepthMap) {
-            this.lastDepthMap.dispose();
+            try {
+                if (this.lastDepthMap.dispose) {
+                    this.lastDepthMap.dispose();
+                }
+            } catch (error) {
+                console.warn('Error disposing depth map:', error);
+            }
             this.lastDepthMap = null;
         }
 
-        this.isModelLoaded = false;
-        this.isEnabled = false;
+        // Clear cached data
+        this.cachedImageData = null;
+        this.cachedDepthWidth = 0;
+        this.cachedDepthHeight = 0;
 
-        console.log('Depth prediction manager cleaned up');
+        // Note: Transformers.js models are cached by the browser
+        // No explicit disposal needed for the pipeline
+        this.estimator = null;
+
+        console.log('✅ Depth prediction cleanup complete');
     }
 }
 
-// Create singleton instance
-console.log('🌊 Creating depth prediction manager singleton...');
-let depthPredictionManager;
-
-try {
-    depthPredictionManager = new DepthPredictionManager();
-    console.log('✅ Depth prediction manager instance created');
-} catch (error) {
-    console.error('❌ Failed to create depth prediction manager:', error);
-    // Create a dummy object to prevent undefined errors
-    depthPredictionManager = {
-        isSupported: () => false,
-        initializeModel: async () => false,
-        toggle: async () => { throw new Error('Depth prediction not available'); },
-        predictDepth: async () => null,
-        cleanup: () => {}
-    };
-}
-
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = depthPredictionManager;
-} else {
-    window.depthPredictionManager = depthPredictionManager;
-    console.log('✅ Depth prediction manager exported to window.depthPredictionManager');
-    console.log('Depth manager instance:', depthPredictionManager);
-}
+// Create global instance
+console.log('Creating global depthPredictionManager instance');
+window.depthPredictionManager = new DepthPredictionManager();
