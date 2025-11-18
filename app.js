@@ -32,7 +32,7 @@ class PoliCameraApp {
 
         // Contour cache for object edge detection (performance optimization)
         this.contourCache = new Map(); // trackId -> {contour, frameNumber}
-        this.contourUpdateInterval = 5; // Update contours every N frames
+        this.contourUpdateInterval = AppConstants.CONTOUR.UPDATE_INTERVAL;
         this.currentFrameNumber = 0;
 
         // FPS tracking
@@ -686,7 +686,7 @@ class PoliCameraApp {
                         depthPredictionManager.warmUp().catch(err => {
                             console.warn('Depth model warmup failed (will load on-demand):', err);
                         });
-                    }, 2000); // 2 second delay
+                    }, AppConstants.DEPTH.WARMUP_DELAY_MS);
                 } else {
                     console.warn('⚠️ Depth manager not available - button hidden');
                 }
@@ -1757,6 +1757,13 @@ class PoliCameraApp {
         // Increment frame counter for contour caching
         this.currentFrameNumber++;
 
+        // Prevent overflow: reset frame counter periodically
+        // At 60 FPS, 1 billion frames = ~193 days of continuous operation
+        if (this.currentFrameNumber > AppConstants.FRAME.MAX_FRAME_NUMBER) {
+            this.currentFrameNumber = 0;
+            this.contourCache.clear(); // Clear cache to prevent stale frame comparisons
+        }
+
         const ctx = this.detectionOverlay.getContext('2d');
 
         // Clear previous detections
@@ -1820,7 +1827,7 @@ class PoliCameraApp {
                 } else {
                     // Extract new contour
                     try {
-                        contourPoints = openCVWrapper.extractObjectContour(this.video, bbox, 2.0);
+                        contourPoints = openCVWrapper.extractObjectContour(this.video, bbox, AppConstants.CONTOUR.SIMPLIFICATION_FACTOR);
 
                         // Cache the result
                         if (contourPoints && contourPoints.length > 2) {
@@ -1840,9 +1847,16 @@ class PoliCameraApp {
                 }
 
                 // Clean up old cache entries (keep cache size manageable)
-                if (this.contourCache.size > 50) {
-                    const oldestKey = this.contourCache.keys().next().value;
-                    this.contourCache.delete(oldestKey);
+                // Batch delete for better performance
+                if (this.contourCache.size > AppConstants.CONTOUR.CACHE_MAX_SIZE) {
+                    const keysToDelete = Math.floor(this.contourCache.size * AppConstants.CONTOUR.CACHE_CLEANUP_PERCENTAGE);
+                    const iterator = this.contourCache.keys();
+                    for (let i = 0; i < keysToDelete; i++) {
+                        const key = iterator.next().value;
+                        if (key !== undefined) {
+                            this.contourCache.delete(key);
+                        }
+                    }
                 }
             } else if (!this.hasLoggedOpenCVWarning && this.currentFrameNumber > 30) {
                 // Log OpenCV status once after 30 frames (~1 second)

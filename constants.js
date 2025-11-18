@@ -135,6 +135,39 @@ const AppConstants = {
     // Detection Statistics
     STATS: {
         FRAME_BUFFER_SIZE: 100
+    },
+
+    // Contour Detection and Caching
+    CONTOUR: {
+        CACHE_MAX_SIZE: 50,
+        UPDATE_INTERVAL: 5, // frames
+        CACHE_CLEANUP_PERCENTAGE: 0.2,
+        SIMPLIFICATION_FACTOR: 2.0,
+        MIN_CONTOUR_POINTS: 3,
+        MAX_CONTOUR_POINTS: 500
+    },
+
+    // OpenCV Edge Detection
+    OPENCV: {
+        CANNY_THRESHOLD_LOW: 30,
+        CANNY_THRESHOLD_HIGH: 90,
+        BILATERAL_FILTER_D: 9,
+        BILATERAL_FILTER_SIGMA_COLOR: 75,
+        BILATERAL_FILTER_SIGMA_SPACE: 75,
+        MIN_ROI_SIZE: 20,
+        MIN_CONTOUR_AREA_PERCENTAGE: 0.1
+    },
+
+    // Frame Management
+    FRAME: {
+        MAX_FRAME_NUMBER: 1000000000 // Reset after ~193 days at 60fps
+    },
+
+    // Depth Prediction
+    DEPTH: {
+        WARMUP_DELAY_MS: 2000,
+        TARGET_FPS: 10,
+        OPACITY: 0.7
     }
 };
 
@@ -153,6 +186,10 @@ Object.freeze(AppConstants.NETWORK);
 Object.freeze(AppConstants.SERVICE_WORKER);
 Object.freeze(AppConstants.COLORS);
 Object.freeze(AppConstants.STATS);
+Object.freeze(AppConstants.CONTOUR);
+Object.freeze(AppConstants.OPENCV);
+Object.freeze(AppConstants.FRAME);
+Object.freeze(AppConstants.DEPTH);
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
