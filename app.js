@@ -57,6 +57,12 @@ class PoliCameraApp {
         this.detectionOverlay = document.getElementById('detectionOverlay');
         this.photosGrid = document.getElementById('photosGrid');
 
+        // Dual view elements
+        this.dualViewContainer = document.getElementById('dualViewContainer');
+        this.cameraContainer = document.getElementById('cameraContainer');
+        this.depthContainer = document.getElementById('depthContainer');
+        this.depthCanvas = document.getElementById('depthCanvas');
+
         // FAB elements
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
@@ -123,6 +129,13 @@ class PoliCameraApp {
                 this.pauseCamera();
             } else if (!document.hidden && this.stream) {
                 this.resumeCamera();
+            }
+        });
+
+        // Handle window resize to update depth canvas dimensions
+        window.addEventListener('resize', () => {
+            if (this.isDepthPredictionEnabled && depthPredictionManager?.dualViewMode) {
+                this.resizeDepthCanvas();
             }
         });
     }
@@ -719,18 +732,39 @@ class PoliCameraApp {
 
             console.log('Depth prediction toggled:', isEnabled ? 'ON' : 'OFF');
 
-            // Update button styling
+            // Enable/disable picture-in-picture mode
             if (isEnabled) {
+                // Enable PiP mode (depth overlay in top left)
+                depthPredictionManager.pipMode = true;
+
+                // Update button styling
                 this.depthFab.classList.add('active');
-                this.showToast('Depth prediction enabled', 'layers');
+                this.showToast('Depth PiP enabled - White=Near, Black=Far', 'layers');
             } else {
+                // Disable PiP mode
+                depthPredictionManager.pipMode = false;
+
+                // Update button styling
                 this.depthFab.classList.remove('active');
-                this.showToast('Depth prediction disabled', 'layers');
+                this.showToast('Depth estimation disabled', 'layers');
             }
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
             this.showError('Failed to initialize depth prediction: ' + error.message);
         }
+    }
+
+    /**
+     * Resize depth canvas to match its container dimensions
+     */
+    resizeDepthCanvas() {
+        if (!this.depthCanvas || !this.depthContainer) return;
+
+        const rect = this.depthContainer.getBoundingClientRect();
+        this.depthCanvas.width = rect.width;
+        this.depthCanvas.height = rect.height;
+
+        console.log(`📐 Depth canvas resized to ${rect.width}x${rect.height}`);
     }
 
     /**
@@ -1388,7 +1422,7 @@ class PoliCameraApp {
         }
     }
 
-    drawRealtimeDetections(detections) {
+    async drawRealtimeDetections(detections) {
         if (!this.detectionOverlay || !detections) return;
 
         const ctx = this.detectionOverlay.getContext('2d');
@@ -1404,15 +1438,17 @@ class PoliCameraApp {
         const scaleX = videoRect.width / this.video.videoWidth;
         const scaleY = videoRect.height / this.video.videoHeight;
 
-        // Draw depth map first (as background layer) if enabled
+        // Render depth map in PiP mode (picture-in-picture in top left)
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {
-            depthPredictionManager.renderDepthMap(
-                ctx,
-                this.currentDepthMap,
-                this.detectionOverlay.width,
-                this.detectionOverlay.height,
-                depthPredictionManager.depthOpacity
-            );
+            if (depthPredictionManager.pipMode) {
+                // PiP mode: render small depth view in top-left corner at 15% size
+                await depthPredictionManager.renderPictureInPicture(
+                    ctx,
+                    this.currentDepthMap,
+                    this.detectionOverlay.width,
+                    this.detectionOverlay.height
+                );
+            }
         }
 
         // Draw "AI Active" indicator in corner when no detections, poses, or faces

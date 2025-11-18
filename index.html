@@ -17,12 +17,30 @@
 <body>
     <div class="app">
         <main class="main">
-            <div class="camera-container">
-                <video id="cameraFeed" autoplay playsinline aria-label="Camera feed with GPS and orientation data overlay">
-                    <track id="positionTrack" kind="subtitles" src="" srclang="en" label="Position Data" default>
+            <!-- Dual View Container -->
+            <div class="dual-view-container single-view" id="dualViewContainer">
+                <!-- Main Camera View -->
+                <div class="camera-container" id="cameraContainer">
+                    <video id="cameraFeed" autoplay playsinline aria-label="Camera feed with GPS and orientation data overlay">
+                        <track id="positionTrack" kind="subtitles" src="" srclang="en" label="Position Data" default>
+                    </video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                    <canvas id="detectionOverlay" class="detection-overlay"></canvas>
+                    <div class="view-label">CAMERA</div>
+                </div>
+
+                <!-- Depth View -->
+                <div class="depth-container" id="depthContainer" style="display: none;">
+                    <canvas id="depthCanvas" class="depth-canvas"></canvas>
+                    <div class="view-label">DEPTH</div>
+                </div>
+            </div>
+
+            <div class="camera-container-legacy" style="display: none;">
+                <video id="cameraFeedLegacy" autoplay playsinline style="display: none;">
                 </video>
-                <canvas id="canvas" style="display: none;"></canvas>
-                <canvas id="detectionOverlay" class="detection-overlay"></canvas>
+                <canvas id="canvasLegacy" style="display: none;"></canvas>
+                <canvas id="detectionOverlayLegacy" class="detection-overlay" style="display: none;"></canvas>
 
                 <!-- Hidden elements for data storage -->
                 <div style="display: none;">

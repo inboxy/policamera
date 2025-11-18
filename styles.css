@@ -189,15 +189,39 @@ body {
   z-index: 1;
 }
 
-/* Camera Container */
-.camera-container {
+/* Dual View Container */
+.dual-view-container {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+}
+
+.dual-view-container.single-view .camera-container {
+  width: 100%;
+}
+
+.dual-view-container.dual-view .camera-container {
+  width: 50%;
+  border-right: 2px solid var(--md-sys-color-primary);
+}
+
+.dual-view-container.dual-view .depth-container {
+  width: 50%;
+}
+
+/* Camera Container */
+.camera-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
   background-color: var(--md-sys-color-surface);
   overflow: hidden;
+  transition: width 0.3s ease;
 }
 
 #cameraFeed {
@@ -215,6 +239,44 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: 10;
+}
+
+/* Depth Container */
+.depth-container {
+  position: relative;
+  width: 50%;
+  height: 100%;
+  background-color: var(--md-sys-color-surface);
+  overflow: hidden;
+  transition: width 0.3s ease;
+}
+
+.depth-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #000000;
+}
+
+/* View Labels */
+.view-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background-color: rgba(180, 242, 34, 0.9);
+  color: var(--md-sys-color-on-primary);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-family: 'Doto', 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  z-index: 20;
+  pointer-events: none;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 
@@ -723,6 +785,23 @@ body {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  /* Stack dual view vertically on tablets and smaller */
+  .dual-view-container.dual-view {
+    flex-direction: column;
+  }
+
+  .dual-view-container.dual-view .camera-container {
+    width: 100%;
+    height: 50%;
+    border-right: none;
+    border-bottom: 2px solid var(--md-sys-color-primary);
+  }
+
+  .dual-view-container.dual-view .depth-container {
+    width: 100%;
+    height: 50%;
+  }
+
   .gps-overlay {
     min-width: 160px;
     padding: 5px 8px;
