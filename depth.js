@@ -243,6 +243,9 @@ class DepthPredictionManager {
             this.lastProcessTime = currentTime;
         }
 
+        let output = null;
+        let depthTensor = null;
+
         try {
             // Dispose previous depth map to prevent memory leak
             if (this.lastDepthMap && this.lastDepthMap.dispose) {
@@ -251,11 +254,11 @@ class DepthPredictionManager {
             }
 
             // Run depth estimation with Transformers.js
-            const output = await this.estimator(imageElement);
+            output = await this.estimator(imageElement);
 
             // Extract depth tensor from output
             // Transformers.js returns { predicted_depth: Tensor, depth: RawImage }
-            const depthTensor = output.predicted_depth;
+            depthTensor = output.predicted_depth;
 
             // Convert to normalized 0-255 tensor (inverted: white=near, black=far)
             const normalizedDepth = await this.normalizeDepthTensor(depthTensor);
@@ -268,6 +271,22 @@ class DepthPredictionManager {
         } catch (error) {
             console.error('Depth prediction failed:', error);
             return null;
+        } finally {
+            // Always cleanup intermediate tensors to prevent memory leaks
+            // The original depthTensor from Transformers.js needs to be disposed
+            // We keep the normalizedDepth (stored in this.lastDepthMap) which is a new TF tensor
+            if (depthTensor && depthTensor !== this.lastDepthMap) {
+                try {
+                    // Transformers.js tensors may have different disposal methods
+                    if (typeof depthTensor.dispose === 'function') {
+                        depthTensor.dispose();
+                    } else if (typeof depthTensor.release === 'function') {
+                        depthTensor.release();
+                    }
+                } catch (e) {
+                    // Ignore disposal errors for intermediate tensors
+                }
+            }
         }
     }
 

@@ -327,9 +327,20 @@ class OpenCVWrapper {
             return null;
         }
 
+        let src = null;
+        let roi = null;
+        let gray = null;
+        let filtered = null;
+        let edges = null;
+        let dilated = null;
+        let kernel = null;
+        let contours = null;
+        let hierarchy = null;
+        let approx = null;
+
         try {
             // Read video frame
-            const src = cv.imread(videoElement);
+            src = cv.imread(videoElement);
             if (!src) {
                 console.warn('Failed to read video element for contour extraction');
                 return null;
@@ -341,41 +352,46 @@ class OpenCVWrapper {
             const width = Math.min(src.cols - x, Math.floor(bbox.width));
             const height = Math.min(src.rows - y, Math.floor(bbox.height));
 
-            if (width <= 0 || height <= 0 || width < 20 || height < 20) {
-                src.delete();
+            const minRoiSize = AppConstants.OPENCV.MIN_ROI_SIZE;
+            if (width <= 0 || height <= 0 || width < minRoiSize || height < minRoiSize) {
                 return null; // ROI too small for meaningful contour
             }
 
             // Extract ROI (Region of Interest)
             const rect = new cv.Rect(x, y, width, height);
-            const roi = src.roi(rect);
+            roi = src.roi(rect);
 
             // Convert to grayscale
-            const gray = new cv.Mat();
+            gray = new cv.Mat();
             cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY);
 
             // Apply bilateral filter for edge-preserving smoothing
-            const filtered = new cv.Mat();
-            cv.bilateralFilter(gray, filtered, 9, 75, 75);
+            filtered = new cv.Mat();
+            cv.bilateralFilter(gray, filtered,
+                AppConstants.OPENCV.BILATERAL_FILTER_D,
+                AppConstants.OPENCV.BILATERAL_FILTER_SIGMA_COLOR,
+                AppConstants.OPENCV.BILATERAL_FILTER_SIGMA_SPACE);
 
             // Apply Canny edge detection with lower thresholds for more edges
-            const edges = new cv.Mat();
-            cv.Canny(filtered, edges, 30, 90); // Lower thresholds = more sensitive
+            edges = new cv.Mat();
+            cv.Canny(filtered, edges,
+                AppConstants.OPENCV.CANNY_THRESHOLD_LOW,
+                AppConstants.OPENCV.CANNY_THRESHOLD_HIGH);
 
             // Dilate edges to close small gaps
-            const dilated = new cv.Mat();
-            const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+            dilated = new cv.Mat();
+            kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
             cv.dilate(edges, dilated, kernel);
 
             // Find contours
-            const contours = new cv.MatVector();
-            const hierarchy = new cv.Mat();
+            contours = new cv.MatVector();
+            hierarchy = new cv.Mat();
             cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
             // Find the largest contour (likely the object)
             let maxArea = 0;
             let largestContourIdx = -1;
-            const minAreaThreshold = (width * height) * 0.1; // At least 10% of bbox area
+            const minAreaThreshold = (width * height) * AppConstants.OPENCV.MIN_CONTOUR_AREA_PERCENTAGE;
 
             for (let i = 0; i < contours.size(); i++) {
                 const contour = contours.get(i);
@@ -393,11 +409,12 @@ class OpenCVWrapper {
 
                 // Simplify contour using Douglas-Peucker algorithm
                 const epsilon = simplificationFactor;
-                const approx = new cv.Mat();
+                approx = new cv.Mat();
                 cv.approxPolyDP(contour, approx, epsilon, true);
 
                 // Only use if we have a reasonable number of points
-                if (approx.rows >= 3 && approx.rows < 500) {
+                if (approx.rows >= AppConstants.CONTOUR.MIN_CONTOUR_POINTS &&
+                    approx.rows < AppConstants.CONTOUR.MAX_CONTOUR_POINTS) {
                     // Convert to array of points (offset by bbox position)
                     contourPoints = [];
                     for (let i = 0; i < approx.rows; i++) {
@@ -408,26 +425,25 @@ class OpenCVWrapper {
                         contourPoints.push(point);
                     }
                 }
-
-                approx.delete();
             }
-
-            // Cleanup
-            src.delete();
-            roi.delete();
-            gray.delete();
-            filtered.delete();
-            edges.delete();
-            dilated.delete();
-            kernel.delete();
-            contours.delete();
-            hierarchy.delete();
 
             return contourPoints;
 
         } catch (error) {
             console.error('Error extracting contour:', error);
             return null;
+        } finally {
+            // Always cleanup Mat objects to prevent memory leaks
+            if (src) src.delete();
+            if (roi) roi.delete();
+            if (gray) gray.delete();
+            if (filtered) filtered.delete();
+            if (edges) edges.delete();
+            if (dilated) dilated.delete();
+            if (kernel) kernel.delete();
+            if (contours) contours.delete();
+            if (hierarchy) hierarchy.delete();
+            if (approx) approx.delete();
         }
     }
 
