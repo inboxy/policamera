@@ -88,6 +88,15 @@
                 </div>
             </div>
 
+            <!-- FPS Counter Overlay -->
+            <div class="fps-overlay" id="fpsOverlay">
+                <div class="fps-value" id="fpsValue">-- FPS</div>
+                <div class="fps-stats">
+                    <span id="detectionFps">AI: --</span>
+                    <span id="depthFps">Depth: --</span>
+                </div>
+            </div>
+
             <!-- Orientation Compass Overlay -->
             <div class="orientation-overlay" id="orientationOverlay">
                 <div class="compass">
@@ -179,6 +188,7 @@
     <!-- External Libraries -->
     <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.0/dist/opencv.min.js" onload="opencvReady();"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>

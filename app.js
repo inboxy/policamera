@@ -27,6 +27,14 @@ class PoliCameraApp {
         this.cachedVideoWidth = 0;
         this.cachedVideoHeight = 0;
 
+        // FPS tracking
+        this.fpsFrameTimes = [];
+        this.fpsLastUpdate = 0;
+        this.detectionFps = 0;
+        this.depthFps = 0;
+        this.lastDetectionTime = 0;
+        this.lastDepthTime = 0;
+
         // VTT tracking
         this.vttTrack = null;
         this.vttCues = [];
@@ -94,6 +102,12 @@ class PoliCameraApp {
         this.pipDepthView = document.getElementById('pipDepthView');
         this.pipDepthCanvas = document.getElementById('pipDepthCanvas');
         this.pipCloseBtn = document.getElementById('pipCloseBtn');
+
+        // FPS overlay elements
+        this.fpsOverlay = document.getElementById('fpsOverlay');
+        this.fpsValue = document.getElementById('fpsValue');
+        this.detectionFpsEl = document.getElementById('detectionFps');
+        this.depthFpsEl = document.getElementById('depthFps');
 
         // Debug: Check if depth button exists
         if (!this.depthFab) {
@@ -938,6 +952,65 @@ class PoliCameraApp {
     }
 
     /**
+     * Update FPS counter
+     */
+    updateFPS() {
+        const now = performance.now();
+
+        // Add current frame time
+        this.fpsFrameTimes.push(now);
+
+        // Keep only last 30 frames (half second at 60fps)
+        if (this.fpsFrameTimes.length > 30) {
+            this.fpsFrameTimes.shift();
+        }
+
+        // Calculate FPS every 200ms
+        if (now - this.fpsLastUpdate > 200) {
+            if (this.fpsFrameTimes.length >= 2) {
+                const timeDiff = this.fpsFrameTimes[this.fpsFrameTimes.length - 1] - this.fpsFrameTimes[0];
+                const fps = Math.round((this.fpsFrameTimes.length - 1) / (timeDiff / 1000));
+
+                // Update display
+                if (this.fpsValue) {
+                    this.fpsValue.textContent = `${fps} FPS`;
+                }
+            }
+            this.fpsLastUpdate = now;
+        }
+    }
+
+    /**
+     * Update detection FPS counter
+     */
+    updateDetectionFPS() {
+        const now = performance.now();
+        if (this.lastDetectionTime > 0) {
+            const detectionTime = now - this.lastDetectionTime;
+            this.detectionFps = Math.round(1000 / detectionTime);
+            if (this.detectionFpsEl) {
+                this.detectionFpsEl.textContent = `AI: ${this.detectionFps}`;
+            }
+        }
+        this.lastDetectionTime = now;
+    }
+
+    /**
+     * Update depth FPS counter
+     */
+    updateDepthFPS() {
+        const now = performance.now();
+        if (this.lastDepthTime > 0) {
+            const depthTime = now - this.lastDepthTime;
+            this.depthFps = Math.round(1000 / depthTime);
+            if (this.depthFpsEl) {
+                this.depthFpsEl.textContent = `Depth: ${this.depthFps}`;
+            }
+        }
+        this.lastDepthTime = now;
+    }
+
+    /**
      * Toggle GPS overlay (minimize/maximize) - delegated to GPS Manager
      */
     toggleGPSOverlay() {
@@ -1543,8 +1616,12 @@ class PoliCameraApp {
             // Skip if video not ready
             if (this.video.readyState < 2) return;
 
+            // Update overall FPS
+            this.updateFPS();
+
             // Run optimized real-time detection directly on video element
             const detections = await aiRecognitionManager.detectObjects(this.video, true);
+            this.updateDetectionFPS();
 
             // Detect poses if enabled
             if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
@@ -1564,6 +1641,7 @@ class PoliCameraApp {
             if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
                 // Note: predictDepth handles internal tensor disposal
                 this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
+                this.updateDepthFPS();
 
                 // Update PiP depth view
                 if (this.currentDepthMap) {
@@ -1653,42 +1731,54 @@ class PoliCameraApp {
             const color = window.aiRecognitionManager ?
                 aiRecognitionManager.getClassColor(className) : '#B4F222';
 
-            // Draw bounding box with thicker line and shadow for better visibility
+            // Draw edge lines instead of full bounding box
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
-            ctx.strokeRect(x, y, width, height);
 
-            // Reset shadow for corners
-            ctx.shadowBlur = 0;
+            // Calculate edge line lengths (30% of each side)
+            const edgeLength = Math.max(30, Math.min(width * 0.3, height * 0.3));
+            const cornerLength = Math.min(edgeLength, width / 3, height / 3);
 
-            // Draw corner accents for modern look - all in one path for efficiency
-            const cornerLength = Math.min(20, width / 4, height / 4);
-            ctx.lineWidth = 4;
             ctx.beginPath();
 
-            // Top-left corner
-            ctx.moveTo(x, y + cornerLength);
-            ctx.lineTo(x, y);
+            // Top edge - left portion
+            ctx.moveTo(x, y);
             ctx.lineTo(x + cornerLength, y);
 
-            // Top-right corner
+            // Top edge - right portion
             ctx.moveTo(x + width - cornerLength, y);
             ctx.lineTo(x + width, y);
-            ctx.lineTo(x + width, y + cornerLength);
 
-            // Bottom-left corner
-            ctx.moveTo(x, y + height - cornerLength);
-            ctx.lineTo(x, y + height);
+            // Bottom edge - left portion
+            ctx.moveTo(x, y + height);
             ctx.lineTo(x + cornerLength, y + height);
 
-            // Bottom-right corner
+            // Bottom edge - right portion
             ctx.moveTo(x + width - cornerLength, y + height);
             ctx.lineTo(x + width, y + height);
-            ctx.lineTo(x + width, y + height - cornerLength);
+
+            // Left edge - top portion
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + cornerLength);
+
+            // Left edge - bottom portion
+            ctx.moveTo(x, y + height - cornerLength);
+            ctx.lineTo(x, y + height);
+
+            // Right edge - top portion
+            ctx.moveTo(x + width, y);
+            ctx.lineTo(x + width, y + cornerLength);
+
+            // Right edge - bottom portion
+            ctx.moveTo(x + width, y + height - cornerLength);
+            ctx.lineTo(x + width, y + height);
 
             ctx.stroke();
+
+            // Reset shadow
+            ctx.shadowBlur = 0;
 
             // Draw label with track ID if available
             const label = trackId ? `${className} #${trackId} ${confidence}%` : `${className} ${confidence}%`;

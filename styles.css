@@ -957,6 +957,46 @@ video::-webkit-media-text-track-display {
   min-width: 250px;
 }
 
+/* FPS Counter Overlay */
+.fps-overlay {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 15;
+  background-color: rgba(20, 21, 20, 0.9);
+  border: 2px solid rgba(180, 242, 34, 0.6);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'Doto', monospace;
+  color: var(--md-sys-color-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  min-width: 100px;
+}
+
+.fps-value {
+  font-size: 24px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--md-sys-color-primary);
+  text-shadow: 0 0 8px rgba(180, 242, 34, 0.6);
+  margin-bottom: 4px;
+}
+
+.fps-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.fps-stats span {
+  display: block;
+  text-align: center;
+}
+
 /* Orientation Compass Overlay */
 .orientation-overlay {
   position: absolute;
