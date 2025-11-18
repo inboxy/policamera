@@ -676,6 +676,15 @@ class PoliCameraApp {
                 if (managersAvailable.depth) {
                     this.depthFab.style.display = 'flex';
                     console.log('✅ Depth prediction button shown');
+
+                    // Warm up depth model in background after short delay
+                    // Delay ensures camera and UI are fully initialized first
+                    setTimeout(() => {
+                        console.log('🌊 Starting background warmup of depth model...');
+                        depthPredictionManager.warmUp().catch(err => {
+                            console.warn('Depth model warmup failed (will load on-demand):', err);
+                        });
+                    }, 2000); // 2 second delay
                 } else {
                     console.warn('⚠️ Depth manager not available - button hidden');
                 }
