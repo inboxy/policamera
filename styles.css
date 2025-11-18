@@ -600,104 +600,75 @@ body {
   box-shadow: var(--md-sys-elevation-level3);
   transition: all 0.2s ease;
   z-index: 20;
-  border: none;
+  border: 2px solid var(--md-sys-color-primary);
+  background-color: rgba(20, 21, 20, 0.85);
+  color: var(--md-sys-color-primary);
+  backdrop-filter: blur(8px);
 }
 
 .fab:hover {
   transform: scale(1.05);
-  box-shadow: var(--md-sys-elevation-level3);
+  background-color: rgba(180, 242, 34, 0.2);
+  box-shadow: 0 0 16px rgba(180, 242, 34, 0.4);
+}
+
+.fab.active {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 0 20px rgba(180, 242, 34, 0.6);
 }
 
 .fab .material-icons {
   font-size: 24px;
 }
 
+/* All buttons on right edge, vertically stacked from bottom */
 /* Start FAB */
 .start-fab {
   bottom: 24px;
-  left: 24px;
-  background-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
+  right: 24px;
 }
 
 /* Capture FAB */
 .capture-fab {
-  bottom: 24px;
+  bottom: 96px;
   right: 24px;
-  background-color: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
 }
 
-/* Photos FAB */
-.photos-fab {
-  bottom: 100px;
+/* Camera Switch FAB */
+.camera-switch-fab {
+  bottom: 168px;
   right: 24px;
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface);
-  border: 2px solid var(--md-sys-color-outline);
-}
-
-/* QR Code FAB */
-.qr-fab {
-  bottom: 176px;
-  right: 24px;
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface);
-  border: 2px solid var(--md-sys-color-outline);
-}
-
-/* Pose FAB */
-.pose-fab {
-  bottom: 248px;
-  right: 24px;
-  background-color: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
-  transition: all 0.3s ease;
-}
-
-.pose-fab.active {
-  background-color: var(--md-sys-color-tertiary);
-  color: var(--md-sys-color-on-tertiary);
-  box-shadow: 0 0 20px var(--md-sys-color-tertiary);
-}
-
-/* Face FAB */
-.face-fab {
-  bottom: 320px;
-  right: 24px;
-  background-color: var(--md-sys-color-error-container);
-  color: var(--md-sys-color-on-error-container);
-  transition: all 0.3s ease;
-}
-
-.face-fab.active {
-  background-color: var(--md-sys-color-error);
-  color: var(--md-sys-color-on-error);
-  box-shadow: 0 0 20px var(--md-sys-color-error);
 }
 
 /* Depth FAB */
 .depth-fab {
-  bottom: 392px;
+  bottom: 240px;
   right: 24px;
-  background-color: #1E88E5;
-  color: #FFFFFF;
-  transition: all 0.3s ease;
 }
 
-.depth-fab.active {
-  background-color: #0D47A1;
-  color: var(--md-sys-color-on-error);
-  box-shadow: 0 0 20px var(--md-sys-color-error);
+/* Face FAB */
+.face-fab {
+  bottom: 312px;
+  right: 24px;
+}
+
+/* Pose FAB */
+.pose-fab {
+  bottom: 384px;
+  right: 24px;
+}
+
+/* QR Code FAB */
+.qr-fab {
+  bottom: 456px;
+  right: 24px;
 }
 
 /* Settings FAB */
 .settings-fab {
   top: 24px;
   right: 24px;
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface);
-  border: 2px solid var(--md-sys-color-outline);
 }
 
 
@@ -923,33 +894,39 @@ body {
     height: 48px;
   }
 
+  /* All buttons on right edge with tighter spacing on mobile */
   .start-fab {
-    bottom: 16px;
-    left: 16px;
-  }
-
-  .capture-fab {
     bottom: 16px;
     right: 16px;
   }
 
-  .photos-fab {
+  .capture-fab {
     bottom: 80px;
     right: 16px;
   }
 
-  .qr-fab {
+  .camera-switch-fab {
     bottom: 144px;
     right: 16px;
   }
 
-  .pose-fab {
+  .depth-fab {
     bottom: 208px;
     right: 16px;
   }
 
   .face-fab {
     bottom: 272px;
+    right: 16px;
+  }
+
+  .pose-fab {
+    bottom: 336px;
+    right: 16px;
+  }
+
+  .qr-fab {
+    bottom: 400px;
     right: 16px;
   }
 
@@ -1107,12 +1084,6 @@ video::-webkit-media-text-track-display {
   height: 12px;
   border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-/* Camera Switch FAB */
-.camera-switch-fab {
-  bottom: 420px;
-  right: 20px;
 }
 
 /* Z-Index Hierarchy (documented for maintainability)
