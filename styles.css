@@ -295,7 +295,8 @@ body {
   color: var(--md-sys-color-primary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
-  min-width: 180px;
+  min-width: 300px;
+  max-width: 90vw;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
   transition: all 0.3s ease;
 }
@@ -416,6 +417,76 @@ body {
 #gpsAltDisplay, #gpsAccDisplay, #gpsTimeDisplay, #gpsHeadingDisplay, #gpsNetworkDisplay {
   font-weight: 500;
   color: var(--md-sys-color-on-surface);
+}
+
+/* Info Sections within GPS Overlay */
+.info-section {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(180, 242, 34, 0.3);
+}
+
+.info-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.info-section-title {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(180, 242, 34, 0.8);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+/* FPS Info Styles */
+.fps-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fps-main {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--md-sys-color-primary);
+}
+
+.fps-main span {
+  color: #B4F222;
+  text-shadow: 0 0 4px rgba(180, 242, 34, 0.3);
+}
+
+.fps-details {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  font-size: 8px;
+}
+
+.fps-item {
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Orientation Info Styles */
+.orientation-info {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  font-size: 8px;
+}
+
+.orientation-item {
+  color: var(--md-sys-color-on-surface);
+  text-align: center;
+}
+
+.orientation-item span {
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 
 /* Status Overlay */
@@ -955,116 +1026,6 @@ video::-webkit-media-text-track-display {
   right: auto;
   max-width: 350px;
   min-width: 250px;
-}
-
-/* FPS Counter Overlay */
-.fps-overlay {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 15;
-  background-color: rgba(20, 21, 20, 0.9);
-  border: 2px solid rgba(180, 242, 34, 0.6);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-family: 'Doto', monospace;
-  color: var(--md-sys-color-primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(10px);
-  min-width: 100px;
-}
-
-.fps-value {
-  font-size: 24px;
-  font-weight: 700;
-  text-align: center;
-  color: var(--md-sys-color-primary);
-  text-shadow: 0 0 8px rgba(180, 242, 34, 0.6);
-  margin-bottom: 4px;
-}
-
-.fps-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.fps-stats span {
-  display: block;
-  text-align: center;
-}
-
-/* Orientation Compass Overlay */
-.orientation-overlay {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 15;
-  background-color: rgba(20, 21, 20, 0.9);
-  border: 2px solid rgba(180, 242, 34, 0.6);
-  border-radius: 12px;
-  padding: 12px;
-  font-family: 'Doto', monospace;
-  color: var(--md-sys-color-primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(10px);
-  min-width: 140px;
-}
-
-.compass {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(180, 242, 34, 0.3);
-}
-
-.compass-arrow {
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle, rgba(180, 242, 34, 0.2) 0%, transparent 70%);
-  border-radius: 50%;
-  border: 2px solid rgba(180, 242, 34, 0.4);
-  transition: transform 0.3s ease-out;
-}
-
-.compass-arrow .material-icons {
-  font-size: 32px;
-  color: var(--md-sys-color-primary);
-  filter: drop-shadow(0 0 4px rgba(180, 242, 34, 0.8));
-}
-
-.compass-heading {
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 6px;
-  color: var(--md-sys-color-primary);
-  text-shadow: 0 0 8px rgba(180, 242, 34, 0.6);
-}
-
-.orientation-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.orientation-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.orientation-label {
-  color: var(--md-sys-color-on-surface-variant);
-  min-width: 60px;
 }
 
 /* Picture-in-Picture Depth View */

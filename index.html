@@ -55,27 +55,53 @@
 
             </div>
 
-            <!-- GPS Coordinates Overlay -->
+            <!-- System Info Overlay (GPS, FPS, Orientation) -->
             <div class="gps-overlay" id="gpsOverlay">
                 <div class="gps-header">
-                    <div class="gps-title">GPS COORDINATES</div>
-                    <button class="gps-toggle" id="gpsToggle" aria-label="Toggle GPS overlay">
+                    <div class="gps-title">SYSTEM INFO</div>
+                    <button class="gps-toggle" id="gpsToggle" aria-label="Toggle system info overlay">
                         <span class="material-icons">expand_less</span>
                     </button>
                 </div>
                 <div class="gps-content" id="gpsContent">
-                    <div class="gps-coords">
-                        <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
-                        <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                    <!-- GPS Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">GPS COORDINATES</div>
+                        <div class="gps-coords">
+                            <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
+                            <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                        </div>
+                        <div class="gps-details">
+                            <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
+                            <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
+                            <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
+                            <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
+                            <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
+                            <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
+                            <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                        </div>
                     </div>
-                    <div class="gps-details">
-                        <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
-                        <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
-                        <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
-                        <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
-                        <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
-                        <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
-                        <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+
+                    <!-- FPS Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">PERFORMANCE</div>
+                        <div class="fps-info">
+                            <div class="fps-main">FPS: <span id="fpsValue">--</span></div>
+                            <div class="fps-details">
+                                <div class="fps-item"><span id="detectionFps">AI: --</span></div>
+                                <div class="fps-item"><span id="depthFps">Depth: --</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Orientation Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">ORIENTATION</div>
+                        <div class="orientation-info">
+                            <div class="orientation-item">Azimuth: <span id="azimuthDisplay">0°</span></div>
+                            <div class="orientation-item">Pitch: <span id="pitchDisplay">0°</span></div>
+                            <div class="orientation-item">Roll: <span id="rollDisplay">0°</span></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -85,39 +111,6 @@
                 <div class="network-status" id="networkStatusOverlay">
                     <span class="material-icons status-icon">wifi</span>
                     <span class="body-medium status-text">Online</span>
-                </div>
-            </div>
-
-            <!-- FPS Counter Overlay -->
-            <div class="fps-overlay" id="fpsOverlay">
-                <div class="fps-value" id="fpsValue">-- FPS</div>
-                <div class="fps-stats">
-                    <span id="detectionFps">AI: --</span>
-                    <span id="depthFps">Depth: --</span>
-                </div>
-            </div>
-
-            <!-- Orientation Compass Overlay -->
-            <div class="orientation-overlay" id="orientationOverlay">
-                <div class="compass">
-                    <div class="compass-arrow" id="compassArrow">
-                        <span class="material-icons">navigation</span>
-                    </div>
-                    <div class="compass-heading" id="compassHeading">0°</div>
-                </div>
-                <div class="orientation-details">
-                    <div class="orientation-row">
-                        <span class="orientation-label">Azimuth:</span>
-                        <span id="azimuthDisplay">0°</span>
-                    </div>
-                    <div class="orientation-row">
-                        <span class="orientation-label">Pitch:</span>
-                        <span id="pitchDisplay">0°</span>
-                    </div>
-                    <div class="orientation-row">
-                        <span class="orientation-label">Roll:</span>
-                        <span id="rollDisplay">0°</span>
-                    </div>
                 </div>
             </div>
 

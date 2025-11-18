@@ -37,8 +37,9 @@ class DepthPredictionManager {
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
 
-        // Model URL - Using MiDaS v2.1 small TFLite model
-        this.modelUrl = 'https://github.com/isl-org/MiDaS/releases/download/v2_1/model_opt.tflite';
+        // Model URL - Using MiDaS v2 TFLite model from Hugging Face
+        // Direct CDN link via Hugging Face resolve endpoint (bypasses CORS issues)
+        this.modelUrl = 'https://huggingface.co/qualcomm/Midas-V2/resolve/main/Midas-V2.tflite';
     }
 
     /**
