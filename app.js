@@ -20,6 +20,12 @@ class PoliCameraApp {
         this.isDepthPredictionEnabled = false;
         this.currentDepthMap = null;
 
+        // Video scaling cache (performance optimization)
+        this.cachedVideoScaleX = 1;
+        this.cachedVideoScaleY = 1;
+        this.cachedVideoWidth = 0;
+        this.cachedVideoHeight = 0;
+
         // VTT tracking
         this.vttTrack = null;
         this.vttCues = [];
@@ -488,23 +494,6 @@ class PoliCameraApp {
         }
     }
 
-    /**
-     * Get current location data (deprecated - use gpsManager instead)
-     * @deprecated Use gpsManager.getCurrentLocation() instead
-     * @returns {Object} Current location data
-     */
-    getCurrentLocationData() {
-        return this.gpsManager.getCurrentLocation();
-    }
-
-    /**
-     * Get current orientation data (deprecated - use gpsManager instead)
-     * @deprecated Use gpsManager.getCurrentOrientation() instead
-     * @returns {Object} Current orientation data
-     */
-    getCurrentOrientationData() {
-        return this.gpsManager.getCurrentOrientation();
-    }
 
     /**
      * Get current location (shorthand for getCurrentLocationData)
@@ -1146,27 +1135,6 @@ class PoliCameraApp {
 
 
     /**
-     * Update location (deprecated - handled by GPS Manager)
-     * @deprecated Location updates are now handled by GPSManager
-     * @param {GeolocationPosition} position - Position data
-     */
-    updateLocation(position) {
-        // This is now handled by GPSManager
-        // Kept for backward compatibility
-        console.warn('updateLocation is deprecated. GPSManager handles this now.');
-    }
-
-    /**
-     * Update GPS display (deprecated - handled by GPS Manager)
-     * @deprecated GPS display updates are now handled by GPSManager
-     */
-    updateGPSDisplay() {
-        // This is now handled by GPSManager
-        // Kept for backward compatibility
-        console.warn('updateGPSDisplay is deprecated. GPSManager handles this now.');
-    }
-
-    /**
      * Load version from manifest
      */
     async loadVersion() {
@@ -1277,6 +1245,8 @@ class PoliCameraApp {
             const rect = this.video.getBoundingClientRect();
             this.detectionOverlay.width = rect.width;
             this.detectionOverlay.height = rect.height;
+            // Update cached video scaling factors
+            this.updateVideoScaling();
         };
 
         // Initial resize
@@ -1284,6 +1254,22 @@ class PoliCameraApp {
 
         // Resize on window resize
         window.addEventListener('resize', resizeOverlay);
+    }
+
+    /**
+     * Update cached video scaling factors (performance optimization)
+     * Called on resize to avoid recalculating these values every frame
+     */
+    updateVideoScaling() {
+        if (!this.video || !this.video.videoWidth || !this.video.videoHeight) {
+            return;
+        }
+
+        const videoRect = this.video.getBoundingClientRect();
+        this.cachedVideoScaleX = videoRect.width / this.video.videoWidth;
+        this.cachedVideoScaleY = videoRect.height / this.video.videoHeight;
+        this.cachedVideoWidth = videoRect.width;
+        this.cachedVideoHeight = videoRect.height;
     }
 
     async startRealTimeDetection() {
@@ -1395,8 +1381,13 @@ class PoliCameraApp {
 
             // Predict depth if enabled
             if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
+                // Note: predictDepth handles internal tensor disposal
                 this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
             } else {
+                // Dispose depth map when disabling depth prediction
+                if (this.currentDepthMap) {
+                    this.currentDepthMap.dispose();
+                }
                 this.currentDepthMap = null;
             }
 
@@ -1433,10 +1424,9 @@ class PoliCameraApp {
         // Validate video dimensions
         if (!this.video.videoWidth || !this.video.videoHeight) return;
 
-        // Calculate scale factors to match video display
-        const videoRect = this.video.getBoundingClientRect();
-        const scaleX = videoRect.width / this.video.videoWidth;
-        const scaleY = videoRect.height / this.video.videoHeight;
+        // Use cached scale factors for performance (updated on resize only)
+        const scaleX = this.cachedVideoScaleX;
+        const scaleY = this.cachedVideoScaleY;
 
         // Render depth map in PiP mode (picture-in-picture in top left)
         if (this.isDepthPredictionEnabled && this.currentDepthMap && window.depthPredictionManager) {

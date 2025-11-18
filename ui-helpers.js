@@ -368,6 +368,30 @@ class UIHelpers {
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         return luminance > 0.5 ? '#000000' : '#FFFFFF';
     }
+
+    /**
+     * Draw rounded rectangle on canvas
+     * Centralized function to avoid code duplication across modules
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} width - Rectangle width
+     * @number} height - Rectangle height
+     * @param {number} radius - Corner radius
+     */
+    static drawRoundedRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
 }
 
 // Export for use in other modules
