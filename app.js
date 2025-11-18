@@ -90,10 +90,7 @@ class PoliCameraApp {
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
 
-        // Orientation overlay elements
-        this.orientationOverlay = document.getElementById('orientationOverlay');
-        this.compassArrow = document.getElementById('compassArrow');
-        this.compassHeading = document.getElementById('compassHeading');
+        // Orientation display elements (now in GPS modal)
         this.azimuthDisplay = document.getElementById('azimuthDisplay');
         this.pitchDisplay = document.getElementById('pitchDisplay');
         this.rollDisplay = document.getElementById('rollDisplay');
@@ -103,8 +100,7 @@ class PoliCameraApp {
         this.pipDepthCanvas = document.getElementById('pipDepthCanvas');
         this.pipCloseBtn = document.getElementById('pipCloseBtn');
 
-        // FPS overlay elements
-        this.fpsOverlay = document.getElementById('fpsOverlay');
+        // FPS display elements (now in GPS modal)
         this.fpsValue = document.getElementById('fpsValue');
         this.detectionFpsEl = document.getElementById('detectionFps');
         this.depthFpsEl = document.getElementById('depthFps');
@@ -373,17 +369,7 @@ class PoliCameraApp {
         const beta = event.beta || 0;   // Front-to-back tilt (-180 to 180)
         const gamma = event.gamma || 0;  // Left-to-right tilt (-90 to 90)
 
-        // Update compass arrow rotation (pointing north)
-        if (this.compassArrow) {
-            this.compassArrow.style.transform = `rotate(${360 - alpha}deg)`;
-        }
-
-        // Update heading display
-        if (this.compassHeading) {
-            this.compassHeading.textContent = `${Math.round(alpha)}°`;
-        }
-
-        // Update detailed orientation values
+        // Update orientation values in GPS modal
         if (this.azimuthDisplay) {
             this.azimuthDisplay.textContent = `${Math.round(alpha)}°`;
         }
