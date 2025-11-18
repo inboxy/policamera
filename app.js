@@ -28,6 +28,11 @@ class PoliCameraApp {
         this.cachedVideoWidth = 0;
         this.cachedVideoHeight = 0;
 
+        // Contour cache for object edge detection (performance optimization)
+        this.contourCache = new Map(); // trackId -> {contour, frameNumber}
+        this.contourUpdateInterval = 5; // Update contours every N frames
+        this.currentFrameNumber = 0;
+
         // FPS tracking
         this.fpsFrameTimes = [];
         this.fpsLastUpdate = 0;
@@ -1738,6 +1743,9 @@ class PoliCameraApp {
     async drawRealtimeDetections(detections) {
         if (!this.detectionOverlay || !detections) return;
 
+        // Increment frame counter for contour caching
+        this.currentFrameNumber++;
+
         const ctx = this.detectionOverlay.getContext('2d');
 
         // Clear previous detections
@@ -1789,51 +1797,104 @@ class PoliCameraApp {
             const color = window.aiRecognitionManager ?
                 aiRecognitionManager.getClassColor(className) : '#B4F222';
 
-            // Draw edge lines instead of full bounding box
+            // Try to get contour from cache or extract new one
+            let contourPoints = null;
+            if (window.openCVWrapper && openCVWrapper.isReady()) {
+                const cacheKey = trackId || `${className}_${Math.floor(bbox.x)}_${Math.floor(bbox.y)}`;
+                const cached = this.contourCache.get(cacheKey);
+
+                // Use cached contour if recent enough (within update interval)
+                if (cached && (this.currentFrameNumber - cached.frameNumber) < this.contourUpdateInterval) {
+                    contourPoints = cached.contour;
+                } else {
+                    // Extract new contour
+                    contourPoints = openCVWrapper.extractObjectContour(this.video, bbox, 2.0);
+
+                    // Cache the result
+                    if (contourPoints) {
+                        this.contourCache.set(cacheKey, {
+                            contour: contourPoints,
+                            frameNumber: this.currentFrameNumber
+                        });
+                    }
+                }
+
+                // Clean up old cache entries (keep cache size manageable)
+                if (this.contourCache.size > 50) {
+                    const oldestKey = this.contourCache.keys().next().value;
+                    this.contourCache.delete(oldestKey);
+                }
+            }
+
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
 
-            // Calculate edge line lengths (30% of each side)
-            const edgeLength = Math.max(30, Math.min(width * 0.3, height * 0.3));
-            const cornerLength = Math.min(edgeLength, width / 3, height / 3);
+            if (contourPoints && contourPoints.length > 2) {
+                // Draw object contour (actual edge of object)
+                ctx.beginPath();
 
-            ctx.beginPath();
+                // Scale first point
+                const firstPoint = {
+                    x: contourPoints[0].x * scaleX,
+                    y: contourPoints[0].y * scaleY
+                };
+                ctx.moveTo(firstPoint.x, firstPoint.y);
 
-            // Top edge - left portion
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + cornerLength, y);
+                // Draw lines through all contour points
+                for (let i = 1; i < contourPoints.length; i++) {
+                    const point = {
+                        x: contourPoints[i].x * scaleX,
+                        y: contourPoints[i].y * scaleY
+                    };
+                    ctx.lineTo(point.x, point.y);
+                }
 
-            // Top edge - right portion
-            ctx.moveTo(x + width - cornerLength, y);
-            ctx.lineTo(x + width, y);
+                // Close the contour
+                ctx.closePath();
+                ctx.stroke();
+            } else {
+                // Fallback: Draw edge lines at corners (if contour extraction failed)
+                const edgeLength = Math.max(30, Math.min(width * 0.3, height * 0.3));
+                const cornerLength = Math.min(edgeLength, width / 3, height / 3);
 
-            // Bottom edge - left portion
-            ctx.moveTo(x, y + height);
-            ctx.lineTo(x + cornerLength, y + height);
+                ctx.beginPath();
 
-            // Bottom edge - right portion
-            ctx.moveTo(x + width - cornerLength, y + height);
-            ctx.lineTo(x + width, y + height);
+                // Top edge - left portion
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + cornerLength, y);
 
-            // Left edge - top portion
-            ctx.moveTo(x, y);
-            ctx.lineTo(x, y + cornerLength);
+                // Top edge - right portion
+                ctx.moveTo(x + width - cornerLength, y);
+                ctx.lineTo(x + width, y);
 
-            // Left edge - bottom portion
-            ctx.moveTo(x, y + height - cornerLength);
-            ctx.lineTo(x, y + height);
+                // Bottom edge - left portion
+                ctx.moveTo(x, y + height);
+                ctx.lineTo(x + cornerLength, y + height);
 
-            // Right edge - top portion
-            ctx.moveTo(x + width, y);
-            ctx.lineTo(x + width, y + cornerLength);
+                // Bottom edge - right portion
+                ctx.moveTo(x + width - cornerLength, y + height);
+                ctx.lineTo(x + width, y + height);
 
-            // Right edge - bottom portion
-            ctx.moveTo(x + width, y + height - cornerLength);
-            ctx.lineTo(x + width, y + height);
+                // Left edge - top portion
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + cornerLength);
 
-            ctx.stroke();
+                // Left edge - bottom portion
+                ctx.moveTo(x, y + height - cornerLength);
+                ctx.lineTo(x, y + height);
+
+                // Right edge - top portion
+                ctx.moveTo(x + width, y);
+                ctx.lineTo(x + width, y + cornerLength);
+
+                // Right edge - bottom portion
+                ctx.moveTo(x + width, y + height - cornerLength);
+                ctx.lineTo(x + width, y + height);
+
+                ctx.stroke();
+            }
 
             // Reset shadow
             ctx.shadowBlur = 0;

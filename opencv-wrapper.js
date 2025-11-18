@@ -319,6 +319,112 @@ class OpenCVWrapper {
     }
 
     /**
+     * Extract object contour from bounding box region
+     * Returns simplified contour points for drawing
+     */
+    extractObjectContour(videoElement, bbox, simplificationFactor = 2.0) {
+        if (!this.isReady()) {
+            return null;
+        }
+
+        try {
+            // Read video frame
+            const src = cv.imread(videoElement);
+            if (!src) return null;
+
+            // Validate bbox
+            const x = Math.max(0, Math.floor(bbox.x));
+            const y = Math.max(0, Math.floor(bbox.y));
+            const width = Math.min(src.cols - x, Math.floor(bbox.width));
+            const height = Math.min(src.rows - y, Math.floor(bbox.height));
+
+            if (width <= 0 || height <= 0) {
+                src.delete();
+                return null;
+            }
+
+            // Extract ROI (Region of Interest)
+            const rect = new cv.Rect(x, y, width, height);
+            const roi = src.roi(rect);
+
+            // Convert to grayscale
+            const gray = new cv.Mat();
+            cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY);
+
+            // Apply Gaussian blur to reduce noise
+            const blurred = new cv.Mat();
+            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+
+            // Apply Canny edge detection
+            const edges = new cv.Mat();
+            cv.Canny(blurred, edges, 50, 150);
+
+            // Dilate edges slightly to close small gaps
+            const dilated = new cv.Mat();
+            const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+            cv.dilate(edges, dilated, kernel);
+
+            // Find contours
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            // Find the largest contour (likely the object)
+            let maxArea = 0;
+            let largestContourIdx = -1;
+
+            for (let i = 0; i < contours.size(); i++) {
+                const contour = contours.get(i);
+                const area = cv.contourArea(contour);
+                if (area > maxArea) {
+                    maxArea = area;
+                    largestContourIdx = i;
+                }
+            }
+
+            let contourPoints = null;
+
+            if (largestContourIdx >= 0) {
+                const contour = contours.get(largestContourIdx);
+
+                // Simplify contour using Douglas-Peucker algorithm
+                const epsilon = simplificationFactor; // Simplification factor
+                const approx = new cv.Mat();
+                cv.approxPolyDP(contour, approx, epsilon, true);
+
+                // Convert to array of points (offset by bbox position)
+                contourPoints = [];
+                for (let i = 0; i < approx.rows; i++) {
+                    const point = {
+                        x: approx.data32S[i * 2] + x,
+                        y: approx.data32S[i * 2 + 1] + y
+                    };
+                    contourPoints.push(point);
+                }
+
+                approx.delete();
+            }
+
+            // Cleanup
+            src.delete();
+            roi.delete();
+            gray.delete();
+            blurred.delete();
+            edges.delete();
+            dilated.delete();
+            kernel.delete();
+            contours.delete();
+            hierarchy.delete();
+
+            return contourPoints;
+
+        } catch (error) {
+            console.error('Error extracting contour:', error);
+            return null;
+        }
+    }
+
+    /**
      * Cleanup resources
      */
     cleanup() {
