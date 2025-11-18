@@ -330,7 +330,10 @@ class OpenCVWrapper {
         try {
             // Read video frame
             const src = cv.imread(videoElement);
-            if (!src) return null;
+            if (!src) {
+                console.warn('Failed to read video element for contour extraction');
+                return null;
+            }
 
             // Validate bbox
             const x = Math.max(0, Math.floor(bbox.x));
@@ -338,9 +341,9 @@ class OpenCVWrapper {
             const width = Math.min(src.cols - x, Math.floor(bbox.width));
             const height = Math.min(src.rows - y, Math.floor(bbox.height));
 
-            if (width <= 0 || height <= 0) {
+            if (width <= 0 || height <= 0 || width < 20 || height < 20) {
                 src.delete();
-                return null;
+                return null; // ROI too small for meaningful contour
             }
 
             // Extract ROI (Region of Interest)
@@ -351,15 +354,15 @@ class OpenCVWrapper {
             const gray = new cv.Mat();
             cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY);
 
-            // Apply Gaussian blur to reduce noise
-            const blurred = new cv.Mat();
-            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+            // Apply bilateral filter for edge-preserving smoothing
+            const filtered = new cv.Mat();
+            cv.bilateralFilter(gray, filtered, 9, 75, 75);
 
-            // Apply Canny edge detection
+            // Apply Canny edge detection with lower thresholds for more edges
             const edges = new cv.Mat();
-            cv.Canny(blurred, edges, 50, 150);
+            cv.Canny(filtered, edges, 30, 90); // Lower thresholds = more sensitive
 
-            // Dilate edges slightly to close small gaps
+            // Dilate edges to close small gaps
             const dilated = new cv.Mat();
             const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
             cv.dilate(edges, dilated, kernel);
@@ -372,11 +375,12 @@ class OpenCVWrapper {
             // Find the largest contour (likely the object)
             let maxArea = 0;
             let largestContourIdx = -1;
+            const minAreaThreshold = (width * height) * 0.1; // At least 10% of bbox area
 
             for (let i = 0; i < contours.size(); i++) {
                 const contour = contours.get(i);
                 const area = cv.contourArea(contour);
-                if (area > maxArea) {
+                if (area > maxArea && area > minAreaThreshold) {
                     maxArea = area;
                     largestContourIdx = i;
                 }
@@ -388,18 +392,21 @@ class OpenCVWrapper {
                 const contour = contours.get(largestContourIdx);
 
                 // Simplify contour using Douglas-Peucker algorithm
-                const epsilon = simplificationFactor; // Simplification factor
+                const epsilon = simplificationFactor;
                 const approx = new cv.Mat();
                 cv.approxPolyDP(contour, approx, epsilon, true);
 
-                // Convert to array of points (offset by bbox position)
-                contourPoints = [];
-                for (let i = 0; i < approx.rows; i++) {
-                    const point = {
-                        x: approx.data32S[i * 2] + x,
-                        y: approx.data32S[i * 2 + 1] + y
-                    };
-                    contourPoints.push(point);
+                // Only use if we have a reasonable number of points
+                if (approx.rows >= 3 && approx.rows < 500) {
+                    // Convert to array of points (offset by bbox position)
+                    contourPoints = [];
+                    for (let i = 0; i < approx.rows; i++) {
+                        const point = {
+                            x: approx.data32S[i * 2] + x,
+                            y: approx.data32S[i * 2 + 1] + y
+                        };
+                        contourPoints.push(point);
+                    }
                 }
 
                 approx.delete();
@@ -409,7 +416,7 @@ class OpenCVWrapper {
             src.delete();
             roi.delete();
             gray.delete();
-            blurred.delete();
+            filtered.delete();
             edges.delete();
             dilated.delete();
             kernel.delete();

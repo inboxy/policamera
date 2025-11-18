@@ -198,6 +198,35 @@ class DepthPredictionManager {
     }
 
     /**
+     * Warm up (preload) the depth model in the background
+     * This downloads and initializes the model without enabling it
+     * Call during app startup to avoid delay when user first activates depth
+     */
+    async warmUp() {
+        if (this.isModelLoaded || this.isLoading) {
+            console.log('🌊 Depth model already', this.isModelLoaded ? 'loaded' : 'loading');
+            return;
+        }
+
+        console.log('🌊 Starting depth model warmup (background preload)...');
+        console.log('💡 This will download ~25MB of model files on first run');
+
+        // Initialize model in background (non-blocking)
+        try {
+            const success = await this.initializeModel();
+            if (success) {
+                console.log('✅ Depth model warmed up and ready to use');
+                console.log('💡 Click the depth button to activate');
+            } else {
+                console.warn('⚠️ Depth model warmup failed - will retry when user activates');
+            }
+        } catch (error) {
+            console.warn('⚠️ Depth model warmup error:', error.message);
+            console.log('💡 Model will load on-demand when user clicks depth button');
+        }
+    }
+
+    /**
      * Predict depth from image using Transformers.js
      */
     async predictDepth(imageElement, isRealTime = false) {
