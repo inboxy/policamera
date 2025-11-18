@@ -19,7 +19,7 @@ class DepthPredictionManager {
 
         // Visualization settings (OPTIMIZED for performance)
         this.depthOpacity = 0.7; // Increased opacity for better visibility
-        this.colorMode = 'distance'; // Green (near) to Red (far) - optimized for distance visualization
+        this.colorMode = 'inferno'; // Inferno colormap (like MiDaS demos) - perceptually uniform
         this.showAvgDepth = true; // Show average depth value
 
         // Cached depth data
@@ -290,11 +290,17 @@ class DepthPredictionManager {
     /**
      * Apply color mapping to depth values
      */
-    applyColorMap(value, mode = 'distance') {
+    applyColorMap(value, mode = 'inferno') {
         // Normalize value to [0, 1]
         const normalized = value / 255;
 
         switch (mode) {
+            case 'inferno':
+                return this.infernoColormap(normalized);
+
+            case 'magma':
+                return this.magmaColormap(normalized);
+
             case 'distance':
                 return this.distanceColormap(normalized);
 
@@ -311,7 +317,7 @@ class DepthPredictionManager {
                 return this.viridisColormap(normalized);
 
             default:
-                return this.distanceColormap(normalized);
+                return this.infernoColormap(normalized);
         }
     }
 
@@ -389,6 +395,56 @@ class DepthPredictionManager {
     }
 
     /**
+     * Inferno colormap (perceptually uniform, commonly used in MiDaS demos)
+     * Dark purple/black (far) -> Red -> Orange -> Yellow -> White (near)
+     */
+    infernoColormap(value) {
+        // Accurate polynomial approximation of matplotlib's inferno colormap
+        const v2 = value * value;
+        const v3 = v2 * value;
+        const v4 = v3 * value;
+
+        const r = Math.max(0, Math.min(255, Math.round(255 * (
+            -0.01948 + 4.55301 * value - 9.53334 * v2 + 12.1836 * v3 - 5.36298 * v4
+        ))));
+
+        const g = Math.max(0, Math.min(255, Math.round(255 * (
+            0.00509 + 0.56132 * value + 4.77655 * v2 - 9.65387 * v3 + 5.54818 * v4
+        ))));
+
+        const b = Math.max(0, Math.min(255, Math.round(255 * (
+            0.01884 + 2.22766 * value - 12.7604 * v2 + 27.1828 * v3 - 21.7499 * v4
+        ))));
+
+        return [r, g, b];
+    }
+
+    /**
+     * Magma colormap (perceptually uniform, commonly used in depth visualization)
+     * Dark purple/black (far) -> Purple -> Pink -> Orange -> Yellow (near)
+     */
+    magmaColormap(value) {
+        // Accurate polynomial approximation of matplotlib's magma colormap
+        const v2 = value * value;
+        const v3 = v2 * value;
+        const v4 = v3 * value;
+
+        const r = Math.max(0, Math.min(255, Math.round(255 * (
+            -0.00178 + 3.10162 * value - 5.53112 * v2 + 8.67094 * v3 - 4.58736 * v4
+        ))));
+
+        const g = Math.max(0, Math.min(255, Math.round(255 * (
+            0.00420 + 0.35156 * value + 2.29152 * v2 - 4.79591 * v3 + 3.10803 * v4
+        ))));
+
+        const b = Math.max(0, Math.min(255, Math.round(255 * (
+            0.01506 + 3.48940 * value - 17.8304 * v2 + 36.3805 * v3 - 26.4538 * v4
+        ))));
+
+        return [r, g, b];
+    }
+
+    /**
      * Render depth map to canvas with color mapping (OPTIMIZED)
      */
     async renderDepthMap(ctx, depthMap, width, height, opacity = 0.6) {
@@ -426,8 +482,36 @@ class DepthPredictionManager {
                 const depthValue = depthData[i];
                 const normalized = depthValue / 255;
 
-                // Inline color mapping for distance mode (most common) for speed
-                if (this.colorMode === 'distance') {
+                // Inline color mapping for most common modes for speed
+                if (this.colorMode === 'inferno') {
+                    // Optimized inline inferno colormap (MiDaS default)
+                    const v2 = normalized * normalized;
+                    const v3 = v2 * normalized;
+                    const v4 = v3 * normalized;
+                    data[pixelIndex] = Math.max(0, Math.min(255, Math.round(255 * (
+                        -0.01948 + 4.55301 * normalized - 9.53334 * v2 + 12.1836 * v3 - 5.36298 * v4
+                    ))));
+                    data[pixelIndex + 1] = Math.max(0, Math.min(255, Math.round(255 * (
+                        0.00509 + 0.56132 * normalized + 4.77655 * v2 - 9.65387 * v3 + 5.54818 * v4
+                    ))));
+                    data[pixelIndex + 2] = Math.max(0, Math.min(255, Math.round(255 * (
+                        0.01884 + 2.22766 * normalized - 12.7604 * v2 + 27.1828 * v3 - 21.7499 * v4
+                    ))));
+                } else if (this.colorMode === 'magma') {
+                    // Optimized inline magma colormap
+                    const v2 = normalized * normalized;
+                    const v3 = v2 * normalized;
+                    const v4 = v3 * normalized;
+                    data[pixelIndex] = Math.max(0, Math.min(255, Math.round(255 * (
+                        -0.00178 + 3.10162 * normalized - 5.53112 * v2 + 8.67094 * v3 - 4.58736 * v4
+                    ))));
+                    data[pixelIndex + 1] = Math.max(0, Math.min(255, Math.round(255 * (
+                        0.00420 + 0.35156 * normalized + 2.29152 * v2 - 4.79591 * v3 + 3.10803 * v4
+                    ))));
+                    data[pixelIndex + 2] = Math.max(0, Math.min(255, Math.round(255 * (
+                        0.01506 + 3.48940 * normalized - 17.8304 * v2 + 36.3805 * v3 - 26.4538 * v4
+                    ))));
+                } else if (this.colorMode === 'distance') {
                     // Optimized inline distance colormap: Green (near) to Red (far)
                     if (normalized < 0.33) {
                         const t = normalized / 0.33;
@@ -538,7 +622,18 @@ class DepthPredictionManager {
 
         const avgText = `Avg Depth: ${this.avgDepth.toFixed(1)}`;
         const rangeText = `Range: ${this.minDepth.toFixed(0)}-${this.maxDepth.toFixed(0)}`;
-        const modeText = `🟢 Near → 🔴 Far`;
+
+        // Display colormap mode
+        const colorModeLabels = {
+            'inferno': '🟣 Inferno (Dark→Bright)',
+            'magma': '🟣 Magma (Dark→Yellow)',
+            'distance': '🟢 Near → 🔴 Far',
+            'turbo': '🌈 Turbo Colormap',
+            'plasma': '🔵 Plasma Colormap',
+            'viridis': '🟢 Viridis Colormap',
+            'grayscale': '⚫ Grayscale'
+        };
+        const modeText = colorModeLabels[this.colorMode] || `Mode: ${this.colorMode}`;
 
         ctx.fillText('🌊 DEPTH OVERLAY', x + 10, y + 22);
         ctx.font = `${mainFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
@@ -579,11 +674,35 @@ class DepthPredictionManager {
             ctx.closePath();
         };
 
-        // Gradient background (green to red)
+        // Gradient background based on current colormap
         const gradient = ctx.createLinearGradient(x, y, x + boxWidth, y);
-        gradient.addColorStop(0, 'rgba(144, 238, 144, 0.9)'); // Light green
-        gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.9)'); // Yellow
-        gradient.addColorStop(1, 'rgba(139, 0, 0, 0.9)'); // Dark red
+
+        if (this.colorMode === 'inferno') {
+            // Inferno gradient: Dark purple → Red → Orange → Yellow
+            gradient.addColorStop(0, 'rgba(0, 0, 4, 0.9)'); // Dark purple/black
+            gradient.addColorStop(0.3, 'rgba(87, 16, 110, 0.9)'); // Purple
+            gradient.addColorStop(0.5, 'rgba(188, 55, 84, 0.9)'); // Red
+            gradient.addColorStop(0.7, 'rgba(249, 142, 9, 0.9)'); // Orange
+            gradient.addColorStop(1, 'rgba(252, 255, 164, 0.9)'); // Light yellow
+        } else if (this.colorMode === 'magma') {
+            // Magma gradient: Dark → Purple → Pink → Orange → Yellow
+            gradient.addColorStop(0, 'rgba(0, 0, 4, 0.9)'); // Dark
+            gradient.addColorStop(0.3, 'rgba(80, 18, 123, 0.9)'); // Purple
+            gradient.addColorStop(0.5, 'rgba(182, 54, 121, 0.9)'); // Pink
+            gradient.addColorStop(0.7, 'rgba(251, 136, 97, 0.9)'); // Orange
+            gradient.addColorStop(1, 'rgba(252, 253, 191, 0.9)'); // Yellow
+        } else if (this.colorMode === 'distance') {
+            // Distance gradient: Green → Yellow → Red
+            gradient.addColorStop(0, 'rgba(144, 238, 144, 0.9)'); // Light green
+            gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.9)'); // Yellow
+            gradient.addColorStop(1, 'rgba(139, 0, 0, 0.9)'); // Dark red
+        } else {
+            // Default colorful gradient for other modes
+            gradient.addColorStop(0, 'rgba(68, 1, 84, 0.9)'); // Viridis start
+            gradient.addColorStop(0.5, 'rgba(33, 145, 140, 0.9)'); // Viridis mid
+            gradient.addColorStop(1, 'rgba(253, 231, 37, 0.9)'); // Viridis end
+        }
+
         ctx.fillStyle = gradient;
         drawRoundedRect(x, y, boxWidth, boxHeight, 6);
         ctx.fill();
@@ -591,7 +710,8 @@ class DepthPredictionManager {
         // Text with responsive font size
         const fontSize = isNarrowScreen ? 11 : 13;
         ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-        ctx.fillStyle = '#000000';
+        // Use white text for inferno/magma (dark backgrounds), black for others
+        ctx.fillStyle = (this.colorMode === 'inferno' || this.colorMode === 'magma') ? '#FFFFFF' : '#000000';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const text = isNarrowScreen ? '🌊 DEPTH' : '🌊 DEPTH ACTIVE';
@@ -606,7 +726,7 @@ class DepthPredictionManager {
      * Change color mode
      */
     setColorMode(mode) {
-        const validModes = ['distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
+        const validModes = ['inferno', 'magma', 'distance', 'grayscale', 'turbo', 'plasma', 'viridis'];
         if (validModes.includes(mode)) {
             this.colorMode = mode;
             console.log('Depth color mode:', mode);
