@@ -3,7 +3,12 @@
  * Uses Tesseract.js for optical character recognition with subtitle-style display
  */
 
-import { createWorker, Worker as TesseractWorker, RecognizeResult } from 'tesseract.js';
+// Declare global Tesseract from CDN script
+declare const Tesseract: {
+    createWorker(...args: any[]): Promise<any>;
+    Worker: any;
+    RecognizeResult: any;
+};
 
 export interface OCRConfig {
     language: string;
@@ -37,7 +42,7 @@ export interface SubtitleBarConfig {
  * OCR Manager class for real-time text recognition
  */
 export class OCRManager {
-    private worker: TesseractWorker | null = null;
+    private worker: any | null = null;
     private isInitialized: boolean = false;
     private isEnabled: boolean = false;
     private isProcessing: boolean = false;
@@ -124,8 +129,8 @@ export class OCRManager {
             console.log('🔤 Initializing Tesseract OCR worker...');
             console.log(`Language: ${this.config.language}`);
 
-            this.worker = await createWorker(this.config.language, 1, {
-                logger: (m) => {
+            this.worker = await Tesseract.createWorker(this.config.language, 1, {
+                logger: (m: any) => {
                     if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract') {
                         console.log(`📥 OCR: ${m.status}... ${Math.round((m.progress || 0) * 100)}%`);
                     }
@@ -237,14 +242,14 @@ export class OCRManager {
 
         try {
             // Recognize text
-            const result: RecognizeResult = await this.worker.recognize(imageElement);
+            const result: any = await this.worker.recognize(imageElement);
 
             // Process results
             const ocrResult: OCRResult = {
                 text: result.data.text.trim(),
                 confidence: result.data.confidence,
                 timestamp: Date.now(),
-                words: result.data.words.map((word) => ({
+                words: result.data.words.map((word: any) => ({
                     text: word.text,
                     confidence: word.confidence,
                     bbox: word.bbox,
