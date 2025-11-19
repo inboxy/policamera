@@ -4,12 +4,35 @@
 
 import { OCRManager, OCRConfig, SubtitleBarConfig } from '../ocr-manager';
 
-// Mock Tesseract
+// Mock Tesseract - must be before imports due to hoisting
+const mockRecognize = jest.fn();
+const mockLoadLanguage = jest.fn();
+const mockInitialize = jest.fn();
+const mockTerminate = jest.fn();
+
+const mockWorker = {
+    loadLanguage: mockLoadLanguage,
+    initialize: mockInitialize,
+    recognize: mockRecognize,
+    terminate: mockTerminate,
+};
+
 jest.mock('tesseract.js', () => ({
-    createWorker: jest.fn().mockResolvedValue({
-        loadLanguage: jest.fn().mockResolvedValue(undefined),
-        initialize: jest.fn().mockResolvedValue(undefined),
-        recognize: jest.fn().mockResolvedValue({
+    createWorker: jest.fn(() => Promise.resolve(mockWorker)),
+}));
+
+describe('OCRManager', () => {
+    let ocrManager: OCRManager;
+
+    beforeEach(() => {
+        // Clear mocks
+        jest.clearAllMocks();
+
+        // Set up default mock implementations
+        mockLoadLanguage.mockResolvedValue(undefined);
+        mockInitialize.mockResolvedValue(undefined);
+        mockTerminate.mockResolvedValue(undefined);
+        mockRecognize.mockResolvedValue({
             data: {
                 text: 'Sample OCR Text',
                 confidence: 85,
@@ -26,17 +49,7 @@ jest.mock('tesseract.js', () => ({
                     },
                 ],
             },
-        }),
-        terminate: jest.fn().mockResolvedValue(undefined),
-    }),
-}));
-
-describe('OCRManager', () => {
-    let ocrManager: OCRManager;
-
-    beforeEach(() => {
-        // Clear mocks
-        jest.clearAllMocks();
+        });
 
         // Create new instance for each test
         ocrManager = new OCRManager();
@@ -120,21 +133,29 @@ describe('OCRManager', () => {
         });
 
         test('should return null if OCR is disabled', async () => {
-            await ocrManager.toggle(); // Disable
+            await ocrManager.toggle(); // Disable (it was enabled by beforeEach)
             const mockImage = document.createElement('img');
             const result = await ocrManager.recognizeText(mockImage);
 
             expect(result).toBeNull();
+
+            // Re-enable for next tests
+            await ocrManager.toggle();
         });
 
         test('should throttle real-time recognition', async () => {
+            // Verify OCR is enabled
+            const metrics = ocrManager.getMetrics();
+            expect(metrics.isEnabled).toBe(true);
+            expect(metrics.isInitialized).toBe(true);
+
             const mockImage = document.createElement('img');
 
             // First call should process
             const result1 = await ocrManager.recognizeText(mockImage, true);
             expect(result1).toBeTruthy();
 
-            // Immediate second call should return cached result
+            // Immediate second call should return cached result (within throttle window)
             const result2 = await ocrManager.recognizeText(mockImage, true);
             expect(result2).toBe(result1);
         });
@@ -148,8 +169,10 @@ describe('OCRManager', () => {
         });
 
         test('should handle recognition errors gracefully', async () => {
+            await ocrManager.initialize();
+            await ocrManager.toggle();
+
             // Mock error in recognition
-            const mockWorker = require('tesseract.js').createWorker.mock.results[0].value;
             mockWorker.recognize.mockRejectedValueOnce(new Error('Recognition failed'));
 
             const mockImage = document.createElement('img');
@@ -239,7 +262,6 @@ describe('OCRManager', () => {
         });
 
         test('should handle language change errors', async () => {
-            const mockWorker = require('tesseract.js').createWorker.mock.results[0].value;
             mockWorker.loadLanguage.mockRejectedValueOnce(new Error('Language not found'));
 
             const result = await ocrManager.setLanguage('invalid');
@@ -265,11 +287,19 @@ describe('OCRManager', () => {
         });
 
         test('should position subtitle bar at top if configured', async () => {
+            // Clean up existing subtitle bar first
+            const existing = document.getElementById('ocr-subtitle-bar');
+            if (existing) {
+                existing.remove();
+            }
+
             const customManager = new OCRManager({}, { position: 'top' });
             await customManager.initialize();
 
             const subtitleBar = document.getElementById('ocr-subtitle-bar');
-            expect(subtitleBar?.style.top).toBe('0px');
+            // Check that cssText contains "top: 0" and not "bottom: 0"
+            expect(subtitleBar?.style.cssText).toContain('top: 0');
+            expect(subtitleBar?.style.cssText).not.toContain('bottom: 0');
 
             await customManager.cleanup();
         });
@@ -301,7 +331,6 @@ describe('OCRManager', () => {
 
         test('should terminate worker on cleanup', async () => {
             await ocrManager.initialize();
-            const mockWorker = require('tesseract.js').createWorker.mock.results[0].value;
 
             await ocrManager.cleanup();
 
@@ -330,7 +359,6 @@ describe('OCRManager', () => {
 
         test('should escape HTML in recognized text', async () => {
             // Mock result with HTML
-            const mockWorker = require('tesseract.js').createWorker.mock.results[0].value;
             mockWorker.recognize.mockResolvedValueOnce({
                 data: {
                     text: '<script>alert("xss")</script>',
@@ -343,8 +371,10 @@ describe('OCRManager', () => {
             await ocrManager.recognizeText(mockImage);
 
             const subtitleBar = document.getElementById('ocr-subtitle-bar');
+            // Should not contain actual script tags
             expect(subtitleBar?.innerHTML).not.toContain('<script>');
-            expect(subtitleBar?.textContent).toContain('&lt;script&gt;');
+            // Should contain escaped version in HTML
+            expect(subtitleBar?.innerHTML).toContain('&lt;script&gt;');
         });
     });
 });

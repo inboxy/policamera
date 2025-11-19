@@ -456,8 +456,8 @@ describe('BarcodeManager', () => {
             const subtitleBar = document.getElementById('barcode-subtitle-bar');
             // Should not contain actual script tags
             expect(subtitleBar?.innerHTML).not.toContain('<script>');
-            // Should contain escaped version
-            expect(subtitleBar?.textContent).toContain('&lt;script&gt;');
+            // Should contain escaped version in innerHTML
+            expect(subtitleBar?.innerHTML).toContain('&lt;script&gt;');
         });
     });
 
