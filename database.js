@@ -12,6 +12,8 @@ class DatabaseManager {
             gpsLogs: 'gpsLogs',
             sessions: 'sessions'
         };
+        // Enable encryption for sensitive GPS data
+        this.encryptionEnabled = true;
     }
 
     /**
@@ -108,15 +110,41 @@ class DatabaseManager {
 
         const now = new Date();
 
+        // Encrypt GPS coordinates if encryption is enabled and crypto manager is available
+        let locationData = {
+            lat: photoData.location?.latitude || null,
+            lon: photoData.location?.longitude || null,
+            alt: photoData.location?.altitude || null,
+            accuracy: photoData.location?.accuracy || null
+        };
+
+        if (this.encryptionEnabled && window.cryptoManager && CryptoManager.isSupported()) {
+            try {
+                if (photoData.location) {
+                    const encrypted = await cryptoManager.encryptLocation(photoData.location);
+                    locationData = {
+                        lat: encrypted.latitude,
+                        lon: encrypted.longitude,
+                        alt: encrypted.altitude,
+                        accuracy: encrypted.accuracy,
+                        encrypted: true // Flag to indicate data is encrypted
+                    };
+                }
+            } catch (error) {
+                console.warn('Failed to encrypt GPS data, storing unencrypted:', error);
+            }
+        }
+
         const record = {
             userId: photoData.userId,
             date: now.toISOString().split('T')[0], // YYYY-MM-DD
             time: now.toTimeString().split(' ')[0], // HH:MM:SS
             timestamp: now.toISOString(),
-            lat: photoData.location?.latitude || null,
-            lon: photoData.location?.longitude || null,
-            alt: photoData.location?.altitude || null,
-            accuracy: photoData.location?.accuracy || null,
+            lat: locationData.lat,
+            lon: locationData.lon,
+            alt: locationData.alt,
+            accuracy: locationData.accuracy,
+            encrypted: locationData.encrypted || false,
             error: photoData.error || null,
             imageName: photoData.imageName || `photo_${Date.now()}.jpg`,
             imageData: photoData.imageData || null,
@@ -178,10 +206,34 @@ class DatabaseManager {
     /**
      * Get all photos for a specific user
      * @param {string} userId
+     * @param {boolean} decrypt - Whether to decrypt encrypted data
      * @returns {Promise<Array>}
      */
-    async getPhotosForUser(userId) {
-        return this.getRecordsByIndex(this.stores.photos, 'userId', userId);
+    async getPhotosForUser(userId, decrypt = true) {
+        const photos = await this.getRecordsByIndex(this.stores.photos, 'userId', userId);
+
+        // Decrypt GPS coordinates if needed
+        if (decrypt && window.cryptoManager) {
+            for (const photo of photos) {
+                if (photo.encrypted) {
+                    try {
+                        const decrypted = await cryptoManager.decryptLocation({
+                            latitude: photo.lat,
+                            longitude: photo.lon,
+                            altitude: photo.alt,
+                            accuracy: photo.accuracy
+                        });
+                        photo.lat = decrypted.latitude;
+                        photo.lon = decrypted.longitude;
+                        photo.alt = decrypted.altitude;
+                    } catch (error) {
+                        console.warn('Failed to decrypt photo location:', error);
+                    }
+                }
+            }
+        }
+
+        return photos;
     }
 
     /**
