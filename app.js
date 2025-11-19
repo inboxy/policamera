@@ -110,7 +110,6 @@ class PoliCameraApp {
         // FAB elements
         this.startFab = document.getElementById('startFab');
         this.captureFab = document.getElementById('captureFab');
-        this.settingsFab = document.getElementById('settingsFab');
         this.qrFab = document.getElementById('qrFab');
         this.poseFab = document.getElementById('poseFab');
         this.faceFab = document.getElementById('faceFab');
@@ -193,7 +192,6 @@ class PoliCameraApp {
         // Button click handlers
         this.startFab.addEventListener('click', () => this.startCamera());
         this.captureFab.addEventListener('click', () => this.capturePhoto());
-        this.settingsFab.addEventListener('click', () => this.toggleSettings());
         this.qrFab.addEventListener('click', () => this.showQRCode());
         this.poseFab.addEventListener('click', () => this.togglePoseEstimation());
         this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
@@ -985,11 +983,6 @@ class PoliCameraApp {
         } else {
             this.photosOverlay.style.display = 'none';
         }
-    }
-
-    toggleSettings() {
-        // For now, just show an alert - settings panel can be implemented later
-        alert('Settings panel - coming soon!\n\nFeatures to be added:\n• Camera resolution settings\n• GPS update frequency\n• Data export options\n• Theme selection');
     }
 
     showQRCode() {
