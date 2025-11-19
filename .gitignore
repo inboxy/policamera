@@ -4,7 +4,7 @@ package-lock.json
 yarn.lock
 
 # Build outputs
-dist/
+# dist/ - committed for GitHub Pages deployment
 build/
 *.bundle.js
 *.bundle.js.map

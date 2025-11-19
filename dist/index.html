@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoliCamera</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@100;200;300;400;500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="styles.css">
+    <meta name="theme-color" content="#B4F222">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+    <div class="app">
+        <main class="main">
+            <!-- Dual View Container -->
+            <div class="dual-view-container single-view" id="dualViewContainer">
+                <!-- Main Camera View -->
+                <div class="camera-container" id="cameraContainer">
+                    <video id="cameraFeed" autoplay playsinline aria-label="Camera feed with GPS and orientation data overlay">
+                        <track id="positionTrack" kind="subtitles" src="" srclang="en" label="Position Data" default>
+                    </video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                    <canvas id="detectionOverlay" class="detection-overlay"></canvas>
+                    <div class="view-label">CAMERA</div>
+                </div>
+
+                <!-- Depth View -->
+                <div class="depth-container" id="depthContainer" style="display: none;">
+                    <canvas id="depthCanvas" class="depth-canvas"></canvas>
+                    <div class="view-label">DEPTH</div>
+                </div>
+            </div>
+
+            <div class="camera-container-legacy" style="display: none;">
+                <video id="cameraFeedLegacy" autoplay playsinline style="display: none;">
+                </video>
+                <canvas id="canvasLegacy" style="display: none;"></canvas>
+                <canvas id="detectionOverlayLegacy" class="detection-overlay" style="display: none;"></canvas>
+
+                <!-- Hidden elements for data storage -->
+                <div style="display: none;">
+                    <span id="latitude">--</span>
+                    <span id="longitude">--</span>
+                    <span id="altitude">-- m</span>
+                    <span id="accuracy">-- m</span>
+                    <span id="alpha">0°</span>
+                    <span id="beta">0°</span>
+                    <span id="gamma">0°</span>
+                </div>
+
+            </div>
+
+            <!-- System Info Overlay (GPS, FPS, Orientation) -->
+            <div class="gps-overlay" id="gpsOverlay">
+                <div class="gps-header">
+                    <div class="gps-title">SYSTEM INFO</div>
+                    <button class="gps-toggle" id="gpsToggle" aria-label="Toggle system info overlay">
+                        <span class="material-icons">expand_less</span>
+                    </button>
+                </div>
+                <div class="gps-content" id="gpsContent">
+                    <!-- GPS Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">GPS COORDINATES</div>
+                        <div class="gps-coords">
+                            <div class="gps-lat">LAT: <span id="gpsLatDisplay">--</span></div>
+                            <div class="gps-lon">LON: <span id="gpsLonDisplay">--</span></div>
+                        </div>
+                        <div class="gps-details">
+                            <div class="gps-user">ID: <span id="gpsUserIdDisplay">--</span></div>
+                            <div class="gps-alt">ALT: <span id="gpsAltDisplay">-- m</span></div>
+                            <div class="gps-acc">ACC: <span id="gpsAccDisplay">-- m</span></div>
+                            <div class="gps-time">TIME: <span id="gpsTimeDisplay">--:--:--</span></div>
+                            <div class="gps-heading">HDG: <span id="gpsHeadingDisplay">--°</span></div>
+                            <div class="gps-network">NET: <span id="gpsNetworkDisplay">--</span></div>
+                            <div class="gps-version">VER: <span id="gpsVersionDisplay">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- FPS Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">PERFORMANCE</div>
+                        <div class="fps-info">
+                            <div class="fps-main">FPS: <span id="fpsValue">--</span></div>
+                            <div class="fps-details">
+                                <div class="fps-item"><span id="detectionFps">AI: --</span></div>
+                                <div class="fps-item"><span id="depthFps">Depth: --</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Orientation Section -->
+                    <div class="info-section">
+                        <div class="info-section-title">ORIENTATION</div>
+                        <div class="orientation-info">
+                            <div class="orientation-item">Azimuth: <span id="azimuthDisplay">0°</span></div>
+                            <div class="orientation-item">Pitch: <span id="pitchDisplay">0°</span></div>
+                            <div class="orientation-item">Roll: <span id="rollDisplay">0°</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status overlay -->
+            <div class="status-overlay">
+                <div class="network-status" id="networkStatusOverlay">
+                    <span class="material-icons status-icon">wifi</span>
+                    <span class="body-medium status-text">Online</span>
+                </div>
+            </div>
+
+            <!-- Picture-in-Picture Depth View -->
+            <div class="pip-depth-view" id="pipDepthView" style="display: none;">
+                <div class="pip-header">
+                    <span class="pip-title">Depth Map</span>
+                    <button class="pip-close" id="pipCloseBtn" aria-label="Close PiP">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
+                <canvas id="pipDepthCanvas" class="pip-canvas"></canvas>
+                <div class="pip-legend">
+                    <span class="pip-legend-item"><span class="pip-legend-color" style="background: white;"></span>Near</span>
+                    <span class="pip-legend-item"><span class="pip-legend-color" style="background: black;"></span>Far</span>
+                </div>
+            </div>
+
+            <!-- Captured photos overlay -->
+            <div class="photos-overlay" id="photosOverlay" style="display: none;">
+                <div class="photos-header">
+                    <h3>Captured Photos</h3>
+                    <div class="stitch-controls">
+                        <button class="stitch-btn" id="stitchBtn" aria-label="Stitch selected photos">
+                            <span class="material-icons">collections</span>
+                            Stitch Photos
+                        </button>
+                    </div>
+                </div>
+                <div class="photos-grid" id="photosGrid"></div>
+            </div>
+        </main>
+
+        <!-- Floating Action Buttons -->
+        <button class="fab start-fab" id="startFab" aria-label="Start camera and GPS tracking">
+            <span class="material-icons">videocam</span>
+        </button>
+
+        <button class="fab capture-fab" id="captureFab" style="display: none;" aria-label="Capture photo">
+            <span class="material-icons">camera_alt</span>
+        </button>
+
+        <button class="fab settings-fab" id="settingsFab" aria-label="Open settings">
+            <span class="material-icons">settings</span>
+        </button>
+
+        <button class="fab qr-fab" id="qrFab" aria-label="Show QR code">
+            <span class="material-icons">qr_code</span>
+        </button>
+
+        <button class="fab pose-fab" id="poseFab" aria-label="Toggle pose estimation" style="display: none;">
+            <span class="material-icons">accessibility_new</span>
+        </button>
+
+        <button class="fab face-fab" id="faceFab" aria-label="Toggle face detection" style="display: none;">
+            <span class="material-icons">face</span>
+        </button>
+
+        <button class="fab depth-fab" id="depthFab" aria-label="Toggle depth prediction" style="display: none;">
+            <span class="material-icons">layers</span>
+        </button>
+
+        <button class="fab camera-switch-fab" id="cameraSwitchFab" aria-label="Switch camera" style="display: none;">
+            <span class="material-icons">cameraswitch</span>
+        </button>
+
+        <button class="fab ocr-fab" id="ocrFab" aria-label="Toggle OCR text recognition" style="display: none;">
+            <span class="material-icons">text_fields</span>
+        </button>
+
+        <button class="fab barcode-fab" id="barcodeFab" aria-label="Toggle barcode scanner" style="display: none;">
+            <span class="material-icons">qr_code_scanner</span>
+        </button>
+    </div>
+
+    <!-- External Libraries -->
+    <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.0/dist/opencv.min.js" onload="opencvReady();"></script>
+
+    <!-- TensorFlow.js for object/pose/face detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+
+    <!-- OCR and Barcode Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+
+    <!-- Core Utilities (must load first) -->
+    <script src="constants.js"></script>
+    <script src="utils.js"></script>
+    <script src="ui-helpers.js"></script>
+
+    <!-- Data Management -->
+    <script src="database.js"></script>
+    <script src="network.js"></script>
+
+    <!-- Feature Modules -->
+    <script src="qr.js"></script>
+    <script src="gps-manager.js"></script>
+    <script src="stitch.js"></script>
+    <script src="opencv-wrapper.js"></script>
+
+    <!-- AI Modules -->
+    <script src="ai.js"></script>
+    <script src="pose.js"></script>
+    <script src="face.js"></script>
+    <script src="depth.js"></script>
+
+    <!-- TypeScript Compiled Modules -->
+    <script src="dist/app-state.js"></script>
+    <script src="dist/ocr-manager.js"></script>
+    <script src="dist/barcode-manager.js"></script>
+
+    <!-- Main Application (must load last) -->
+    <script src="app.js"></script>
+</body>
+</html>

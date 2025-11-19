@@ -1,0 +1,44 @@
+{
+  "name": "PoliCamera - Professional Camera App",
+  "short_name": "PoliCamera",
+  "version": "1.0.0",
+  "description": "Professional camera app with GPS tracking, network monitoring, and device orientation for documentation and evidence capture",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#000000",
+  "theme_color": "#B4F222",
+  "categories": ["photography", "utilities", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start Camera",
+      "short_name": "Camera",
+      "description": "Quickly start camera with GPS tracking",
+      "url": "./",
+      "icons": [
+        {
+          "src": "icon.svg",
+          "sizes": "any"
+        }
+      ]
+    }
+  ],
+  "protocol_handlers": [],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "prefer_related_applications": false,
+  "related_applications": []
+}
