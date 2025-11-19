@@ -1,7 +1,7 @@
 {
   "name": "policamera",
-  "version": "2.0.0",
-  "description": "Progressive Web App for professional camera with AI detection, GPS tracking, OCR, and depth estimation",
+  "version": "2.1.0",
+  "description": "Progressive Web App for professional camera with AI detection, GPS tracking, OCR, barcode/QR scanning, and depth estimation",
   "main": "dist/app.js",
   "types": "dist/app.d.ts",
   "scripts": {
@@ -22,6 +22,8 @@
     "gps",
     "ai",
     "ocr",
+    "barcode",
+    "qr-code",
     "tesseract",
     "object-detection",
     "depth-estimation",
@@ -35,6 +37,7 @@
     "@huggingface/transformers": "^3.0.2",
     "@tensorflow/tfjs": "^4.20.0",
     "@tensorflow/tfjs-backend-webgl": "^4.20.0",
+    "@zxing/library": "^0.20.0",
     "jsqr": "^1.4.0",
     "tesseract.js": "^5.1.0"
   },
