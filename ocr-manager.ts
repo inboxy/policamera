@@ -416,6 +416,7 @@ export class OCRManager {
         this.currentResult = null;
         this.resultHistory = [];
         this.isInitialized = false;
+        this.lastProcessTime = 0;
 
         console.log('✅ OCR cleanup complete');
     }

@@ -40,6 +40,9 @@ describe('StateManager', () => {
         });
 
         test('should check if in specific state', () => {
+            // Follow valid transition chain: IDLE -> INITIALIZING -> CAMERA_STARTING -> CAMERA_ACTIVE
+            stateManager.setAppState(AppState.INITIALIZING, 'Test');
+            stateManager.setAppState(AppState.CAMERA_STARTING, 'Test');
             stateManager.setAppState(AppState.CAMERA_ACTIVE, 'Test');
             expect(stateManager.isInState(AppState.CAMERA_ACTIVE)).toBe(true);
             expect(stateManager.isInState(AppState.IDLE)).toBe(false);
@@ -186,6 +189,9 @@ describe('StateManager', () => {
 
     describe('State Summary and Export', () => {
         test('should generate state summary', () => {
+            // Follow valid transition chain: IDLE -> INITIALIZING -> CAMERA_STARTING -> CAMERA_ACTIVE
+            stateManager.setAppState(AppState.INITIALIZING, 'Test');
+            stateManager.setAppState(AppState.CAMERA_STARTING, 'Test');
             stateManager.setAppState(AppState.CAMERA_ACTIVE, 'Test');
             stateManager.setFeatureState('objectDetection', FeatureState.ENABLED);
 
@@ -197,6 +203,10 @@ describe('StateManager', () => {
         });
 
         test('should export state as JSON', () => {
+            // Follow valid transition chain: IDLE -> INITIALIZING -> CAMERA_STARTING -> CAMERA_ACTIVE -> DETECTING
+            stateManager.setAppState(AppState.INITIALIZING, 'Test');
+            stateManager.setAppState(AppState.CAMERA_STARTING, 'Test');
+            stateManager.setAppState(AppState.CAMERA_ACTIVE, 'Test');
             stateManager.setAppState(AppState.DETECTING, 'Test');
 
             const exported = stateManager.exportState();
