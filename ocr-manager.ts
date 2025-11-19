@@ -46,10 +46,35 @@ export class OCRManager {
     private lastProcessTime: number = 0;
     private targetFrameTime: number;
 
-    // OCR results
+    /**
+     * OCR result storage
+     * Stores the last 10 recognition results in a FIFO queue.
+     *
+     * Memory Management:
+     * - Each OCRResult is ~2KB (text + word-level data with bounding boxes)
+     * - Max 10 results = ~20KB memory footprint
+     * - Smaller limit than barcode (10 vs 20) due to larger result objects
+     * - Prevents unbounded memory growth during continuous OCR processing
+     * - Oldest results are automatically removed when limit is reached
+     */
     private currentResult: OCRResult | null = null;
     private resultHistory: OCRResult[] = [];
+
+    /**
+     * Maximum number of OCR results to keep in history
+     * Limited to 10 (vs 20 for barcodes) due to larger object size
+     */
     private maxHistorySize: number = 10;
+
+    /**
+     * LocalStorage key for persisting history
+     */
+    private readonly storageKey: string = 'policamera-ocr-history';
+
+    /**
+     * Enable/disable automatic persistence
+     */
+    private persistenceEnabled: boolean = false;
 
     // Subtitle display
     private subtitleBar: HTMLDivElement | null = null;
@@ -259,14 +284,35 @@ export class OCRManager {
     }
 
     /**
-     * Add result to history
+     * Add OCR result to history with automatic FIFO cleanup
+     *
+     * Implements a circular buffer pattern where oldest items are removed
+     * when the history exceeds maxHistorySize (10 items).
+     *
+     * OCR results are larger than barcode results (~2KB vs ~500 bytes) due to:
+     * - Word-level recognition data
+     * - Bounding box coordinates for each word
+     * - Confidence scores per word
+     *
+     * This prevents memory leaks during:
+     * - Continuous text recognition sessions
+     * - Real-time OCR processing
+     * - Long-running camera sessions
+     *
+     * If persistence is enabled, also saves to localStorage.
+     *
+     * @param result - The OCR result to add to history
      */
     private addToHistory(result: OCRResult): void {
         this.resultHistory.push(result);
 
+        // FIFO cleanup: Remove oldest when exceeding limit
         if (this.resultHistory.length > this.maxHistorySize) {
             this.resultHistory.shift();
         }
+
+        // Save to storage if persistence enabled
+        this.saveHistoryToStorage();
     }
 
     /**
@@ -387,6 +433,158 @@ export class OCRManager {
         } catch (error) {
             console.error('Failed to change OCR language:', error);
             return false;
+        }
+    }
+
+    /**
+     * Export OCR history to JSON format
+     *
+     * Creates a structured export containing all recognition history with metadata.
+     * Useful for:
+     * - Text analytics and analysis
+     * - Training data collection
+     * - Debugging OCR patterns
+     * - Backup/restore functionality
+     *
+     * @returns JSON string containing complete recognition history
+     */
+    exportHistory(): string {
+        const exportData = {
+            exportVersion: '1.0',
+            timestamp: new Date().toISOString(),
+            device: {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+            },
+            ocr: {
+                language: this.config.language,
+                maxHistorySize: this.maxHistorySize,
+                currentHistorySize: this.resultHistory.length,
+                targetFPS: this.config.targetFPS,
+                minConfidence: this.config.minConfidence,
+            },
+            metrics: this.getMetrics(),
+            history: this.resultHistory.map(result => ({
+                text: result.text,
+                confidence: result.confidence,
+                timestamp: result.timestamp,
+                timestampISO: new Date(result.timestamp).toISOString(),
+                wordCount: result.words.length,
+                words: result.words.map(word => ({
+                    text: word.text,
+                    confidence: word.confidence,
+                    bbox: word.bbox,
+                })),
+            })),
+        };
+
+        return JSON.stringify(exportData, null, 2);
+    }
+
+    /**
+     * Download OCR history as JSON file
+     *
+     * Triggers a browser download of the recognition history.
+     * File is named with timestamp for easy organization.
+     */
+    downloadHistory(): void {
+        try {
+            const jsonData = this.exportHistory();
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ocr-history-${Date.now()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            console.log('📥 OCR history downloaded');
+        } catch (error) {
+            console.error('Failed to download OCR history:', error);
+        }
+    }
+
+    /**
+     * Enable automatic persistence to localStorage
+     *
+     * When enabled, history is automatically saved after each recognition.
+     * History is also restored on initialization.
+     *
+     * @param enabled - Whether to enable persistence
+     */
+    setPersistence(enabled: boolean): void {
+        this.persistenceEnabled = enabled;
+        console.log(`🔤 OCR history persistence ${enabled ? 'enabled' : 'disabled'}`);
+
+        if (enabled) {
+            // Load existing history
+            this.loadHistoryFromStorage();
+        }
+    }
+
+    /**
+     * Save current history to localStorage
+     *
+     * Stores the recognition history to persist across sessions.
+     * Automatically handles storage quota exceeded errors.
+     */
+    private saveHistoryToStorage(): void {
+        if (!this.persistenceEnabled) return;
+
+        try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.resultHistory));
+        } catch (error) {
+            console.warn('Failed to save OCR history to storage:', error);
+            // Disable persistence if storage is full
+            if (error instanceof Error && error.name === 'QuotaExceededError') {
+                this.persistenceEnabled = false;
+                console.warn('Storage quota exceeded - OCR persistence disabled');
+            }
+        }
+    }
+
+    /**
+     * Load history from localStorage
+     *
+     * Restores previously saved recognition results.
+     * Only loads if persistence is enabled.
+     */
+    private loadHistoryFromStorage(): void {
+        try {
+            const stored = localStorage.getItem(this.storageKey);
+            if (!stored) return;
+
+            const history = JSON.parse(stored) as OCRResult[];
+            // Validate and restore history
+            if (Array.isArray(history)) {
+                this.resultHistory = history.slice(-this.maxHistorySize);
+                console.log(`🔤 Loaded ${this.resultHistory.length} OCR results from storage`);
+            }
+        } catch (error) {
+            console.warn('Failed to load OCR history from storage:', error);
+        }
+    }
+
+    /**
+     * Clear recognition history from memory and storage
+     */
+    clearHistory(): void {
+        this.resultHistory = [];
+        this.currentResult = null;
+        this.clearHistoryFromStorage();
+        console.log('🔤 OCR history cleared');
+    }
+
+    /**
+     * Clear history from both memory and storage
+     */
+    private clearHistoryFromStorage(): void {
+        try {
+            localStorage.removeItem(this.storageKey);
+            console.log('🔤 OCR history cleared from storage');
+        } catch (error) {
+            console.warn('Failed to clear OCR storage:', error);
         }
     }
 

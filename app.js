@@ -8,6 +8,13 @@ class PoliCameraApp {
         this.currentFacingMode = 'environment'; // Start with back camera
         this.isSwitchingCamera = false; // Flag to prevent race conditions
 
+        // Debug mode for developers (check localStorage or URL param)
+        this.debugMode = localStorage.getItem('policamera-debug') === 'true' ||
+                        new URLSearchParams(window.location.search).has('debug');
+        if (this.debugMode) {
+            console.log('🐛 Debug mode enabled - detailed errors will be shown');
+        }
+
         // Detection state
         this.detectionInterval = null;
         this.isDetectionRunning = false;
@@ -1075,10 +1082,14 @@ class PoliCameraApp {
                 this.barcodeFab.classList.remove('active');
                 this.showToast('Barcode scanner disabled', 'qr_code_scanner');
 
-                // Stop continuous scanning
+                // Stop continuous scanning - cleanup interval first
                 if (this.barcodeIntervalId) {
                     clearInterval(this.barcodeIntervalId);
                     this.barcodeIntervalId = null;
+                }
+
+                // Always call stopScanning to ensure cleanup
+                if (window.barcodeManager) {
                     window.barcodeManager.stopScanning();
                 }
             }
@@ -1871,7 +1882,11 @@ class PoliCameraApp {
                             this.currentDepthMap.dispose();
                         }
                     } catch (e) {
-                        // Ignore disposal errors
+                        // Log disposal errors in debug mode
+                        if (this.debugMode) {
+                            console.warn('⚠️ Depth map disposal warning:', e.message);
+                            this.showToast('Depth map disposal warning - see console', 'warning');
+                        }
                     }
                 }
 
@@ -1926,6 +1941,11 @@ class PoliCameraApp {
             if (!this.hasLoggedDetectionError) {
                 console.error('Full error details:', error);
                 this.hasLoggedDetectionError = true;
+
+                // Show error to user in debug mode
+                if (this.debugMode) {
+                    this.showError(`Detection error: ${error.message}`);
+                }
             }
         }
     }
