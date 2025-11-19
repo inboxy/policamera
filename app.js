@@ -40,6 +40,10 @@ class PoliCameraApp {
         this.cachedVideoWidth = 0;
         this.cachedVideoHeight = 0;
 
+        // Screen orientation tracking for bounding box alignment
+        this.screenOrientation = 0; // 0, 90, 180, 270 degrees
+        this.screenOrientationType = 'portrait-primary'; // portrait-primary, landscape-primary, etc.
+
         // Contour cache for object edge detection (performance optimization)
         this.contourCache = new Map(); // trackId -> {contour, frameNumber}
         this.contourUpdateInterval = AppConstants.CONTOUR.UPDATE_INTERVAL;
@@ -78,6 +82,7 @@ class PoliCameraApp {
         this.initializeServiceWorker();
         this.initializeNetworkStatus();
         this.initializeDeviceOrientation();
+        this.initializeScreenOrientation();
         this.initializeWebVTT();
         this.initializeUserId();
         this.initializeDatabase();
@@ -429,6 +434,82 @@ class PoliCameraApp {
         if (this.rollDisplay) {
             this.rollDisplay.textContent = `${Math.round(gamma)}°`;
         }
+    }
+
+    /**
+     * Initialize screen orientation tracking for bounding box alignment
+     * Monitors screen rotation (portrait/landscape) to ensure bounding boxes
+     * remain correctly positioned when the device is rotated
+     */
+    initializeScreenOrientation() {
+        // Set initial orientation
+        this.updateScreenOrientation();
+
+        // Listen for orientation changes using modern Screen Orientation API
+        if (screen.orientation) {
+            this.addEventListener(screen.orientation, 'change', () => {
+                this.updateScreenOrientation();
+            });
+        }
+        // Fallback for older browsers
+        else if ('onorientationchange' in window) {
+            this.addEventListener(window, 'orientationchange', () => {
+                this.updateScreenOrientation();
+            });
+        }
+
+        console.log('📱 Screen orientation tracking initialized');
+    }
+
+    /**
+     * Update screen orientation data and refresh bounding box rendering
+     * Called on orientation change to recalculate canvas transformations
+     */
+    updateScreenOrientation() {
+        // Get orientation angle and type
+        if (screen.orientation) {
+            // Modern API: provides type (portrait-primary, landscape-primary, etc.) and angle
+            this.screenOrientationType = screen.orientation.type;
+            this.screenOrientation = screen.orientation.angle;
+        } else if (window.orientation !== undefined) {
+            // Legacy API: only provides angle
+            this.screenOrientation = window.orientation;
+            // Infer type from angle
+            if (this.screenOrientation === 0) {
+                this.screenOrientationType = 'portrait-primary';
+            } else if (this.screenOrientation === 90) {
+                this.screenOrientationType = 'landscape-primary';
+            } else if (this.screenOrientation === -90 || this.screenOrientation === 270) {
+                this.screenOrientationType = 'landscape-secondary';
+            } else if (this.screenOrientation === 180) {
+                this.screenOrientationType = 'portrait-secondary';
+            }
+        } else {
+            // Default to portrait if no API available
+            this.screenOrientation = 0;
+            this.screenOrientationType = 'portrait-primary';
+        }
+
+        // Wait for browser to apply orientation changes before updating
+        // This ensures video element has the correct dimensions
+        setTimeout(() => {
+            // Resize detection overlay to match new video dimensions
+            if (this.detectionOverlay && this.video) {
+                const rect = this.video.getBoundingClientRect();
+                this.detectionOverlay.width = rect.width;
+                this.detectionOverlay.height = rect.height;
+            }
+
+            // Update video scaling factors with new dimensions
+            this.updateVideoScaling();
+
+            // Log orientation change
+            if (this.debugMode) {
+                console.log(`📱 Screen orientation changed: ${this.screenOrientationType} (${this.screenOrientation}°)`);
+                console.log(`   Overlay resized to: ${this.detectionOverlay?.width}x${this.detectionOverlay?.height}`);
+                console.log(`   Scale factors: ${this.cachedVideoScaleX.toFixed(3)}x, ${this.cachedVideoScaleY.toFixed(3)}y`);
+            }
+        }, 100); // Small delay to allow browser layout updates
     }
 
     initializeWebVTT() {
