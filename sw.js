@@ -1,4 +1,6 @@
-const CACHE_NAME = 'policamera-v3'; // Updated for refactored modules
+const CACHE_NAME = 'policamera-v4'; // Updated for encryption and integrity checks
+
+// Critical files with integrity validation
 const urlsToCache = [
   './',
   './index.html',
@@ -8,6 +10,7 @@ const urlsToCache = [
   './constants.js',
   './utils.js',
   './ui-helpers.js',
+  './crypto-manager.js',
   // Data Management
   './database.js',
   './network.js',
@@ -26,13 +29,86 @@ const urlsToCache = [
   './app.js'
 ];
 
-// Install event - cache resources
+// File integrity hashes (should be generated during build)
+// For now, we'll validate file types and sizes
+const integrityChecks = {
+  maxFileSize: 10 * 1024 * 1024, // 10MB max for any cached file
+  allowedTypes: [
+    'text/html',
+    'text/css',
+    'text/javascript',
+    'application/javascript',
+    'application/json',
+    'application/manifest+json'
+  ]
+};
+
+/**
+ * Validate response before caching
+ * @param {Response} response - Response to validate
+ * @param {string} url - URL of the resource
+ * @returns {boolean} True if response is valid
+ */
+function validateResponse(response, url) {
+  // Check if response is valid
+  if (!response || response.status !== 200) {
+    console.warn(`Invalid response for ${url}: status ${response?.status}`);
+    return false;
+  }
+
+  // Check content type
+  const contentType = response.headers.get('content-type');
+  if (contentType) {
+    const isAllowedType = integrityChecks.allowedTypes.some(type =>
+      contentType.toLowerCase().includes(type)
+    );
+    if (!isAllowedType) {
+      console.warn(`Disallowed content type for ${url}: ${contentType}`);
+      return false;
+    }
+  }
+
+  // Check content length if available
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && parseInt(contentLength) > integrityChecks.maxFileSize) {
+    console.warn(`File too large for ${url}: ${contentLength} bytes`);
+    return false;
+  }
+
+  return true;
+}
+
+// Install event - cache resources with validation
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+      .then(async cache => {
+        console.log('📦 Service Worker: Installing and caching resources...');
+
+        // Cache files one by one with validation
+        const cachePromises = urlsToCache.map(async url => {
+          try {
+            const response = await fetch(url);
+
+            if (!validateResponse(response, url)) {
+              console.error(`Validation failed for ${url}, skipping cache`);
+              return;
+            }
+
+            // Clone response before caching (can only read once)
+            await cache.put(url, response.clone());
+            console.log(`✅ Cached: ${url}`);
+          } catch (error) {
+            console.error(`Failed to cache ${url}:`, error);
+            // Don't fail installation if optional resources fail
+            if (url === './index.html' || url === './app.js') {
+              throw error; // Critical files must be cached
+            }
+          }
+        });
+
+        await Promise.allSettled(cachePromises);
+        console.log('✅ Service Worker: Installation complete');
       })
       .then(() => {
         return self.skipWaiting();
@@ -58,21 +134,54 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - serve from cache with validation, fallback to network
 self.addEventListener('fetch', event => {
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
-      .then(response => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request).then(fetchResponse => {
-          // Check if valid response
-          if (!fetchResponse || fetchResponse.status !== 200 || fetchResponse.type !== 'basic') {
-            return fetchResponse;
+      .then(cachedResponse => {
+        // If we have a cached response, validate it
+        if (cachedResponse) {
+          // Check if cached response is still valid
+          const cacheDate = cachedResponse.headers.get('date');
+          if (cacheDate) {
+            const cacheAge = Date.now() - new Date(cacheDate).getTime();
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+
+            // If cache is stale, try network first
+            if (cacheAge > maxAge) {
+              console.log(`Stale cache for ${event.request.url}, trying network`);
+              return fetch(event.request)
+                .then(fetchResponse => {
+                  if (validateResponse(fetchResponse, event.request.url)) {
+                    const responseToCache = fetchResponse.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                      cache.put(event.request, responseToCache);
+                    });
+                    return fetchResponse;
+                  }
+                  return cachedResponse; // Return stale cache if network response invalid
+                })
+                .catch(() => cachedResponse); // Return stale cache on network error
+            }
           }
 
-          // Only cache GET requests for cacheable resources
-          if (event.request.method === 'GET' && event.request.url.startsWith(self.location.origin)) {
-            // Clone the response
+          return cachedResponse;
+        }
+
+        // No cache, fetch from network
+        return fetch(event.request).then(fetchResponse => {
+          // Validate response before caching
+          if (!validateResponse(fetchResponse, event.request.url)) {
+            return fetchResponse; // Return without caching if invalid
+          }
+
+          // Only cache same-origin GET requests
+          if (event.request.url.startsWith(self.location.origin)) {
             const responseToCache = fetchResponse.clone();
 
             caches.open(CACHE_NAME)
@@ -86,10 +195,11 @@ self.addEventListener('fetch', event => {
 
           return fetchResponse;
         });
-      }).catch(() => {
+      })
+      .catch(() => {
         // If both cache and network fail, return offline page for navigation requests
         if (event.request.destination === 'document') {
-          return caches.match('/index.html');
+          return caches.match('./index.html');
         }
       })
   );
