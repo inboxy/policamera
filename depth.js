@@ -1,13 +1,13 @@
 /**
  * Depth Prediction Manager for PoliCamera
- * Uses Transformers.js with Depth-Anything V2 for state-of-the-art depth estimation
+ * Uses lightweight edge-based depth estimation with optional TensorFlow.js enhancement
+ * NO external dependencies or CDN loading required
  */
 
 console.log('🌊 Loading depth.js module...');
 
 class DepthPredictionManager {
     constructor() {
-        this.estimator = null; // Transformers.js pipeline
         this.isModelLoaded = false;
         this.isLoading = false;
         this.isEnabled = false;
@@ -36,190 +36,51 @@ class DepthPredictionManager {
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
 
-        // Model configuration - Using Depth-Anything V2 Small (fast, accurate, SOTA)
-        this.modelName = 'Xenova/depth-anything-small';
+        // Processing canvas for edge detection
+        this.processingCanvas = document.createElement('canvas');
+        this.processingCtx = this.processingCanvas.getContext('2d', { willReadFrequently: true });
 
-        // Transformers.js pipeline library
-        this.transformers = null;
+        // Depth estimation mode: 'edge' (fast), 'blur' (smooth), 'hybrid' (best quality)
+        this.estimationMode = 'hybrid';
+
+        console.log('✅ Depth estimation initialized (no external dependencies)');
+        this.isModelLoaded = true; // Always ready since we use client-side processing
     }
 
     /**
      * Check if depth prediction is supported
      */
     isSupported() {
-        // Transformers.js works in all modern browsers
-        return true;
+        // Works in all browsers with canvas support
+        return typeof document.createElement('canvas').getContext === 'function';
     }
 
     /**
-     * Initialize the Transformers.js depth prediction pipeline
+     * Initialize the depth estimation
+     * No model loading required - using edge-based depth estimation
      */
     async initializeModel() {
-        if (this.isModelLoaded || this.isLoading) {
-            console.log('Depth model already', this.isModelLoaded ? 'loaded' : 'loading');
-            return this.isModelLoaded;
+        if (this.isModelLoaded) {
+            console.log('✅ Depth estimation already ready');
+            return true;
         }
 
-        this.isLoading = true;
-        console.log('🌊 Loading Depth-Anything V2 model via Transformers.js...');
+        console.log('🌊 Initializing edge-based depth estimation...');
 
         try {
-            // Dynamically import Transformers.js (ES modules)
-            console.log('📦 Loading Transformers.js library...');
-
-            // Try multiple CDNs in parallel for faster loading
-            const cdnUrls = [
-                'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2',
-                'https://unpkg.com/@huggingface/transformers@3.0.2/dist/transformers.min.js'
-            ];
-
-            console.log('📦 Loading Transformers.js from multiple CDNs in parallel...');
-
-            // Create promises for each CDN with timeout
-            const importPromises = cdnUrls.map((url, index) => {
-                return new Promise(async (resolve, reject) => {
-                    try {
-                        const timeoutPromise = new Promise((_, timeoutReject) =>
-                            setTimeout(() => timeoutReject(new Error(`Timeout loading from ${url}`)), 30000)
-                        );
-
-                        const result = await Promise.race([import(url), timeoutPromise]);
-                        console.log(`✅ CDN ${index + 1} loaded successfully: ${url}`);
-                        resolve({ url, result });
-                    } catch (error) {
-                        console.warn(`❌ CDN ${index + 1} failed: ${url} - ${error.message}`);
-                        reject(error);
-                    }
-                });
-            });
-
-            try {
-                // Use Promise.any to get the first successful load
-                const { url, result } = await Promise.any(importPromises);
-                this.transformers = result;
-                console.log('✅ Transformers.js library loaded from:', url);
-                console.log('Transformers version:', this.transformers.env?.version || 'unknown');
-
-                // Configure Transformers.js environment for better reliability
-                if (this.transformers.env) {
-                    // Allow browser cache for models (reduces re-downloads)
-                    this.transformers.env.useBrowserCache = true;
-                    this.transformers.env.allowLocalModels = true;
-                    this.transformers.env.allowRemoteModels = true;
-
-                    // Add retry configuration for fetch requests
-                    this.transformers.env.useCustomCache = false;
-
-                    console.log('✅ Transformers.js environment configured for reliability');
-                }
-            } catch (aggregateError) {
-                throw new Error('Failed to load Transformers.js from all CDNs: ' + aggregateError.errors.map(e => e.message).join(', '));
-            }
-
-            // Initialize canvases early
+            // Initialize canvases
             this.preprocessCanvas = document.createElement('canvas');
             this.colorMapCanvas = document.createElement('canvas');
+            this.processingCanvas = document.createElement('canvas');
+            this.processingCtx = this.processingCanvas.getContext('2d', { willReadFrequently: true });
 
-            // Try WASM first (more compatible than WebGPU)
-            console.log('📥 Loading Depth-Anything V2 model (first load may take 30-60s)...');
-            console.log('ℹ️  Model will be cached in browser for future use');
-            console.log('ℹ️  Using WASM backend for maximum compatibility');
-
-            // Helper function to load model with retry logic
-            const loadModelWithRetry = async (device, maxRetries = 3) => {
-                for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                    try {
-                        console.log(`📥 Attempt ${attempt}/${maxRetries} to load model (${device})...`);
-
-                        const estimator = await this.transformers.pipeline('depth-estimation', this.modelName, {
-                            device: device,
-                            dtype: 'fp32',
-                            progress_callback: (progress) => {
-                                if (progress.status === 'progress') {
-                                    const percent = Math.round((progress.loaded / progress.total) * 100);
-                                    console.log(`⏳ Downloading ${progress.file}: ${percent}%`);
-                                } else if (progress.status === 'done') {
-                                    console.log(`✅ Downloaded ${progress.file}`);
-                                } else if (progress.status === 'initiate') {
-                                    console.log(`📦 Starting download: ${progress.file}`);
-                                }
-                            }
-                        });
-
-                        return estimator; // Success!
-
-                    } catch (error) {
-                        console.warn(`⚠️ Attempt ${attempt} failed:`, error.message);
-
-                        // Check if it's a 401/403 authentication error
-                        if (error.message?.includes('401') || error.message?.includes('Unauthorized') ||
-                            error.message?.includes('403') || error.message?.includes('Forbidden')) {
-                            console.warn('🔒 Authentication error detected - HuggingFace API may be rate limiting');
-                            console.log('💡 This is often temporary. The model will retry on next activation.');
-                        }
-
-                        if (attempt < maxRetries) {
-                            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
-                            console.log(`⏱️  Retrying in ${delay/1000} seconds...`);
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                        } else {
-                            throw error; // Final attempt failed
-                        }
-                    }
-                }
-            };
-
-            try {
-                this.estimator = await loadModelWithRetry('wasm', 2); // 2 retries for WASM
-                this.isModelLoaded = true;
-                this.isLoading = false;
-                console.log('✅ Depth-Anything V2 model loaded successfully (WASM)');
-                return true;
-
-            } catch (wasmError) {
-                console.warn('⚠️ WASM loading failed after retries, trying WebGPU...', wasmError.message);
-
-                // Fallback to WebGPU if WASM fails
-                try {
-                    this.estimator = await loadModelWithRetry('webgpu', 2); // 2 retries for WebGPU
-                    this.isModelLoaded = true;
-                    this.isLoading = false;
-                    console.log('✅ Depth-Anything V2 model loaded successfully (WebGPU)');
-                    return true;
-
-                } catch (webgpuError) {
-                    console.error('❌ WebGPU also failed after retries:', webgpuError.message);
-                    throw new Error(`Both WASM and WebGPU failed. WASM: ${wasmError.message}, WebGPU: ${webgpuError.message}`);
-                }
-            }
+            this.isModelLoaded = true;
+            console.log('✅ Depth estimation ready (edge-based, fast)');
+            console.log('💡 No model download required - using client-side algorithms');
+            return true;
 
         } catch (error) {
-            console.error('❌ Failed to initialize Depth-Anything V2:', error);
-            console.error('Error type:', error.constructor.name);
-            console.error('Error message:', error.message);
-
-            // Detailed error diagnosis
-            if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-                console.error('🔒 HuggingFace API returned 401 Unauthorized');
-                console.error('💡 Common causes:');
-                console.error('   - HuggingFace rate limiting (temporary)');
-                console.error('   - Model may require authentication');
-                console.error('   - API service disruption');
-                console.error('💡 Solutions:');
-                console.error('   1. Wait a few minutes and try again');
-                console.error('   2. The model will auto-retry when you click the depth button');
-                console.error('   3. Check HuggingFace status: https://status.huggingface.co');
-            } else if (error.message?.includes('timeout') || error.message?.includes('network') || error.message?.includes('fetch')) {
-                console.error('🌐 Network error detected. Please check your internet connection.');
-                console.error('💡 The model files are ~25MB and need to download on first use.');
-            } else if (!this.transformers) {
-                console.error('📦 Transformers.js library failed to load.');
-                console.error('💡 Try refreshing the page or checking your internet connection.');
-            }
-
-            console.log('💡 Depth prediction will remain available - model loads on-demand when activated');
-
-            this.isLoading = false;
+            console.error('❌ Failed to initialize depth estimation:', error);
             this.isModelLoaded = false;
             return false;
         }
@@ -232,7 +93,7 @@ class DepthPredictionManager {
         if (!this.isModelLoaded) {
             const loaded = await this.initializeModel();
             if (!loaded) {
-                throw new Error('Failed to load depth prediction model');
+                throw new Error('Failed to initialize depth estimation');
             }
         }
 
@@ -242,39 +103,24 @@ class DepthPredictionManager {
     }
 
     /**
-     * Warm up (preload) the depth model in the background
-     * This downloads and initializes the model without enabling it
-     * Call during app startup to avoid delay when user first activates depth
+     * Warm up (preload) - No-op since we don't need to load models
      */
     async warmUp() {
-        if (this.isModelLoaded || this.isLoading) {
-            console.log('🌊 Depth model already', this.isModelLoaded ? 'loaded' : 'loading');
-            return;
-        }
-
-        console.log('🌊 Starting depth model warmup (background preload)...');
-        console.log('💡 This will download ~25MB of model files on first run');
-
-        // Initialize model in background (non-blocking)
-        try {
-            const success = await this.initializeModel();
-            if (success) {
-                console.log('✅ Depth model warmed up and ready to use');
-                console.log('💡 Click the depth button to activate');
-            } else {
-                console.warn('⚠️ Depth model warmup failed - will retry when user activates');
-            }
-        } catch (error) {
-            console.warn('⚠️ Depth model warmup error:', error.message);
-            console.log('💡 Model will load on-demand when user clicks depth button');
-        }
+        console.log('🌊 Depth estimation ready (no warmup needed)');
+        return this.initializeModel();
     }
 
     /**
-     * Predict depth from image using Transformers.js
+     * Predict depth from image using edge-based depth estimation
+     *
+     * This uses a hybrid approach:
+     * 1. Edge detection (Sobel filters) - identifies object boundaries
+     * 2. Gradient magnitude - estimates depth from intensity changes
+     * 3. Blur analysis - far objects are typically blurrier
+     * 4. Brightness analysis - darker areas often indicate depth
      */
     async predictDepth(imageElement, isRealTime = false) {
-        if (!this.isModelLoaded || !this.estimator) {
+        if (!this.isModelLoaded) {
             return null;
         }
 
@@ -287,112 +133,224 @@ class DepthPredictionManager {
             this.lastProcessTime = currentTime;
         }
 
-        let output = null;
-        let depthTensor = null;
-        const tensorsToCleanup = [];
-
         try {
             // Dispose previous depth map to prevent memory leak
-            if (this.lastDepthMap) {
+            if (this.lastDepthMap && this.lastDepthMap.dispose) {
                 try {
-                    if (this.lastDepthMap.dispose) {
-                        this.lastDepthMap.dispose();
-                    }
+                    this.lastDepthMap.dispose();
                 } catch (e) {
                     console.warn('Failed to dispose previous depth map:', e);
                 }
                 this.lastDepthMap = null;
             }
 
-            // Run depth estimation with Transformers.js
-            output = await this.estimator(imageElement);
+            // Get image dimensions
+            const width = imageElement.videoWidth || imageElement.width;
+            const height = imageElement.videoHeight || imageElement.height;
 
-            // Extract depth tensor from output
-            // Transformers.js returns { predicted_depth: Tensor, depth: RawImage }
-            depthTensor = output.predicted_depth;
-            tensorsToCleanup.push(depthTensor);
+            // Downsample for performance (depth doesn't need full resolution)
+            const targetWidth = 320;
+            const targetHeight = Math.floor(height * (targetWidth / width));
 
-            // Convert to normalized 0-255 tensor (inverted: white=near, black=far)
-            const normalizedDepth = await this.normalizeDepthTensor(depthTensor);
+            // Set canvas size
+            this.processingCanvas.width = targetWidth;
+            this.processingCanvas.height = targetHeight;
+
+            // Draw image to processing canvas
+            this.processingCtx.drawImage(imageElement, 0, 0, targetWidth, targetHeight);
+
+            // Get image data
+            const imageData = this.processingCtx.getImageData(0, 0, targetWidth, targetHeight);
+
+            // Estimate depth based on mode
+            let depthData;
+            switch (this.estimationMode) {
+                case 'edge':
+                    depthData = this.estimateDepthFromEdges(imageData);
+                    break;
+                case 'blur':
+                    depthData = this.estimateDepthFromBlur(imageData);
+                    break;
+                case 'hybrid':
+                default:
+                    depthData = this.estimateDepthHybrid(imageData);
+                    break;
+            }
+
+            // Create tensor-like object compatible with rendering code
+            const depthMap = this.createDepthTensor(depthData, targetHeight, targetWidth);
 
             // Cache result
-            this.lastDepthMap = normalizedDepth;
+            this.lastDepthMap = depthMap;
 
-            return normalizedDepth;
+            return depthMap;
 
         } catch (error) {
             console.error('Depth prediction failed:', error);
             return null;
-        } finally {
-            // Always cleanup intermediate tensors to prevent memory leaks
-            for (const tensor of tensorsToCleanup) {
-                if (tensor && tensor !== this.lastDepthMap) {
-                    try {
-                        // Transformers.js tensors may have different disposal methods
-                        if (typeof tensor.dispose === 'function') {
-                            tensor.dispose();
-                        } else if (typeof tensor.release === 'function') {
-                            tensor.release();
-                        }
-                    } catch (e) {
-                        // Ignore disposal errors for intermediate tensors
-                        console.warn('Tensor cleanup warning:', e.message);
-                    }
-                }
-            }
         }
     }
 
     /**
-     * Normalize depth tensor to 0-255 range with inversion (white=near, black=far)
+     * Estimate depth using edge detection (Sobel filters)
+     * Objects with strong edges are typically closer
      */
-    async normalizeDepthTensor(depthTensor) {
-        if (!depthTensor) return null;
+    estimateDepthFromEdges(imageData) {
+        const { data, width, height } = imageData;
+        const depthData = new Float32Array(width * height);
 
-        try {
-            // Get raw depth data
-            const depthData = await depthTensor.data();
-            const [height, width] = depthTensor.dims.slice(-2);
+        // Sobel kernels for edge detection
+        const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+        const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
 
-            // Find min/max for normalization
-            let min = Infinity;
-            let max = -Infinity;
-            for (let i = 0; i < depthData.length; i++) {
-                if (depthData[i] < min) min = depthData[i];
-                if (depthData[i] > max) max = depthData[i];
-            }
+        // Process each pixel
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                let gx = 0, gy = 0;
 
-            // Create normalized and inverted depth data (white=near, black=far)
-            const normalizedData = new Float32Array(depthData.length);
-            const range = max - min;
+                // Apply Sobel filters
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = ((y + ky) * width + (x + kx)) * 4;
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
 
-            if (range > 0) {
-                for (let i = 0; i < depthData.length; i++) {
-                    // Normalize to 0-1
-                    const normalized = (depthData[i] - min) / range;
-                    // Invert (1 - normalized) so near is bright, far is dark
-                    const inverted = 1.0 - normalized;
-                    // Scale to 0-255
-                    normalizedData[i] = inverted * 255;
+                        // Use grayscale value (average RGB)
+                        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+
+                        gx += gray * sobelX[kernelIdx];
+                        gy += gray * sobelY[kernelIdx];
+                    }
                 }
-            }
 
-            // Create a simple tensor-like object for compatibility
-            // (We use TensorFlow.js tf.tensor2d for compatibility with rendering code)
-            if (typeof tf !== 'undefined') {
-                return tf.tensor2d(normalizedData, [height, width]);
-            } else {
-                // Fallback: return simple object
-                return {
-                    data: () => Promise.resolve(normalizedData),
-                    shape: [height, width],
-                    dispose: () => {} // No-op disposal
-                };
-            }
+                // Calculate gradient magnitude
+                const gradient = Math.sqrt(gx * gx + gy * gy);
 
-        } catch (error) {
-            console.error('Failed to normalize depth tensor:', error);
-            return null;
+                // Normalize and invert (strong edges = near = bright)
+                const pixelIdx = y * width + x;
+                depthData[pixelIdx] = Math.min(255, gradient * 1.5);
+            }
+        }
+
+        return depthData;
+    }
+
+    /**
+     * Estimate depth from local variance (blur analysis)
+     * Blurry regions are typically farther away
+     */
+    estimateDepthFromBlur(imageData) {
+        const { data, width, height } = imageData;
+        const depthData = new Float32Array(width * height);
+        const windowSize = 5; // 5x5 window for variance calculation
+
+        for (let y = windowSize; y < height - windowSize; y++) {
+            for (let x = windowSize; x < width - windowSize; x++) {
+                let sum = 0;
+                let sumSq = 0;
+                let count = 0;
+
+                // Calculate local variance
+                for (let wy = -windowSize; wy <= windowSize; wy++) {
+                    for (let wx = -windowSize; wx <= windowSize; wx++) {
+                        const idx = ((y + wy) * width + (x + wx)) * 4;
+                        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+
+                        sum += gray;
+                        sumSq += gray * gray;
+                        count++;
+                    }
+                }
+
+                // Variance = E[X²] - E[X]²
+                const mean = sum / count;
+                const variance = (sumSq / count) - (mean * mean);
+
+                // Higher variance = sharper = closer
+                const pixelIdx = y * width + x;
+                depthData[pixelIdx] = Math.min(255, variance * 2);
+            }
+        }
+
+        return depthData;
+    }
+
+    /**
+     * Hybrid depth estimation combining multiple cues
+     * - Edge strength (object boundaries)
+     * - Local variance (blur/sharpness)
+     * - Brightness (darker often means farther)
+     */
+    estimateDepthHybrid(imageData) {
+        const { data, width, height } = imageData;
+        const depthData = new Float32Array(width * height);
+
+        // Sobel kernels
+        const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+        const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+        for (let y = 2; y < height - 2; y++) {
+            for (let x = 2; x < width - 2; x++) {
+                // 1. Edge detection
+                let gx = 0, gy = 0;
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = ((y + ky) * width + (x + kx)) * 4;
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                        gx += gray * sobelX[kernelIdx];
+                        gy += gray * sobelY[kernelIdx];
+                    }
+                }
+                const edgeStrength = Math.sqrt(gx * gx + gy * gy);
+
+                // 2. Local variance (sharpness)
+                let sum = 0, sumSq = 0, count = 0;
+                for (let wy = -2; wy <= 2; wy++) {
+                    for (let wx = -2; wx <= 2; wx++) {
+                        const idx = ((y + wy) * width + (x + wx)) * 4;
+                        const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                        sum += gray;
+                        sumSq += gray * gray;
+                        count++;
+                    }
+                }
+                const mean = sum / count;
+                const variance = (sumSq / count) - (mean * mean);
+
+                // 3. Brightness (darker = farther, inverted for our display)
+                const centerIdx = (y * width + x) * 4;
+                const brightness = (data[centerIdx] + data[centerIdx + 1] + data[centerIdx + 2]) / 3;
+
+                // Combine cues with weights
+                // Edge (40%) + Variance (40%) + Brightness (20%)
+                const depthEstimate =
+                    (edgeStrength * 0.4) +
+                    (variance * 1.5 * 0.4) +
+                    (brightness * 0.2);
+
+                const pixelIdx = y * width + x;
+                depthData[pixelIdx] = Math.min(255, depthEstimate);
+            }
+        }
+
+        return depthData;
+    }
+
+    /**
+     * Create a tensor-like object compatible with TensorFlow.js API
+     */
+    createDepthTensor(depthData, height, width) {
+        // If TensorFlow.js is available, use real tensors
+        if (typeof tf !== 'undefined') {
+            return tf.tensor2d(depthData, [height, width]);
+        } else {
+            // Fallback: create compatible object
+            return {
+                data: () => Promise.resolve(depthData),
+                shape: [height, width],
+                dims: [height, width],
+                dispose: () => {} // No-op disposal for raw arrays
+            };
         }
     }
 
@@ -425,6 +383,23 @@ class DepthPredictionManager {
             average: avg,
             min: min,
             max: max
+        };
+    }
+
+    /**
+     * Export depth data for saving
+     */
+    async exportDepthData(depthMap) {
+        if (!depthMap) return null;
+
+        const stats = await this.analyzeDepth(depthMap);
+
+        return {
+            average: stats.average,
+            min: stats.min,
+            max: stats.max,
+            colorMode: this.colorMode,
+            estimationMode: this.estimationMode,
         };
     }
 
@@ -528,6 +503,63 @@ class DepthPredictionManager {
     }
 
     /**
+     * Render picture-in-picture depth view (top-left corner)
+     */
+    async renderPictureInPicture(overlayCtx, depthMap, overlayWidth, overlayHeight) {
+        if (!overlayCtx || !depthMap) return;
+
+        const pipSize = 0.15; // 15% of overlay size
+        const pipWidth = Math.floor(overlayWidth * pipSize);
+        const pipHeight = Math.floor(overlayHeight * pipSize);
+        const pipX = 10;
+        const pipY = 10;
+
+        // Get depth data
+        const depthData = await depthMap.data();
+        const [depthHeight, depthWidth] = depthMap.shape;
+
+        // Create temporary canvas for depth rendering
+        if (!this.colorMapCanvas) {
+            this.colorMapCanvas = document.createElement('canvas');
+        }
+        this.colorMapCanvas.width = depthWidth;
+        this.colorMapCanvas.height = depthHeight;
+
+        const tempCtx = this.colorMapCanvas.getContext('2d');
+        const imageData = tempCtx.createImageData(depthWidth, depthHeight);
+        const data = imageData.data;
+
+        // Render depth with color mapping
+        for (let i = 0; i < depthData.length; i++) {
+            const pixelIndex = i * 4;
+            const [r, g, b] = this.applyColorMap(depthData[i], this.colorMode);
+            data[pixelIndex] = r;
+            data[pixelIndex + 1] = g;
+            data[pixelIndex + 2] = b;
+            data[pixelIndex + 3] = 255;
+        }
+
+        tempCtx.putImageData(imageData, 0, 0);
+
+        // Draw PiP background
+        overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        overlayCtx.fillRect(pipX, pipY, pipWidth, pipHeight);
+
+        // Draw scaled depth map
+        overlayCtx.drawImage(this.colorMapCanvas, pipX, pipY, pipWidth, pipHeight);
+
+        // Draw border
+        overlayCtx.strokeStyle = 'rgba(180, 242, 34, 0.8)';
+        overlayCtx.lineWidth = 2;
+        overlayCtx.strokeRect(pipX, pipY, pipWidth, pipHeight);
+
+        // Draw label
+        overlayCtx.fillStyle = 'rgba(180, 242, 34, 0.9)';
+        overlayCtx.font = 'bold 10px monospace';
+        overlayCtx.fillText('DEPTH', pipX + 5, pipY + 15);
+    }
+
+    /**
      * Render depth stats overlay
      */
     renderDepthStats(canvas, stats) {
@@ -539,7 +571,7 @@ class DepthPredictionManager {
         const boxX = 20;
         const boxY = 80;
         const boxWidth = 180;
-        const boxHeight = 80;
+        const boxHeight = 100;
 
         // Draw semi-transparent background
         ctx.fillStyle = 'rgba(20, 21, 20, 0.9)';
@@ -552,16 +584,28 @@ class DepthPredictionManager {
 
         // Draw text
         ctx.fillStyle = '#B4F222';
-        ctx.font = 'bold 12px "Doto", monospace';
+        ctx.font = 'bold 12px monospace';
         ctx.textAlign = 'left';
 
         ctx.fillText('DEPTH MAP', boxX + 10, boxY + 20);
 
-        ctx.font = '10px "Doto", monospace';
+        ctx.font = '10px monospace';
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(`Avg: ${stats.average.toFixed(1)}`, boxX + 10, boxY + 40);
-        ctx.fillText(`Min: ${stats.min.toFixed(1)}`, boxX + 10, boxY + 55);
-        ctx.fillText(`Max: ${stats.max.toFixed(1)}`, boxX + 10, boxY + 70);
+        ctx.fillText(`Mode: ${this.estimationMode}`, boxX + 10, boxY + 40);
+        ctx.fillText(`Avg: ${stats.average.toFixed(1)}`, boxX + 10, boxY + 55);
+        ctx.fillText(`Min: ${stats.min.toFixed(1)}`, boxX + 10, boxY + 70);
+        ctx.fillText(`Max: ${stats.max.toFixed(1)}`, boxX + 10, boxY + 85);
+    }
+
+    /**
+     * Set depth estimation mode
+     * @param mode - 'edge', 'blur', or 'hybrid'
+     */
+    setEstimationMode(mode) {
+        if (['edge', 'blur', 'hybrid'].includes(mode)) {
+            this.estimationMode = mode;
+            console.log(`🌊 Depth estimation mode: ${mode}`);
+        }
     }
 
     /**
@@ -571,10 +615,6 @@ class DepthPredictionManager {
         console.log('🧹 Cleaning up depth prediction resources...');
 
         this.isEnabled = false;
-        this.isModelLoaded = false;
-
-        // Wait a frame for any pending operations
-        await new Promise(resolve => setTimeout(resolve, 100));
 
         // Dispose last depth map
         if (this.lastDepthMap) {
@@ -592,10 +632,6 @@ class DepthPredictionManager {
         this.cachedImageData = null;
         this.cachedDepthWidth = 0;
         this.cachedDepthHeight = 0;
-
-        // Note: Transformers.js models are cached by the browser
-        // No explicit disposal needed for the pipeline
-        this.estimator = null;
 
         console.log('✅ Depth prediction cleanup complete');
     }
