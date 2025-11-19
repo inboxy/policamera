@@ -1,0 +1,217 @@
+/**
+ * Barcode/QR Code Manager for PoliCamera
+ * Real-time barcode scanning using ZXing library
+ * Supports 1D barcodes and 2D codes (QR, Data Matrix, PDF417, Aztec)
+ */
+import { BarcodeFormat } from '@zxing/library';
+export interface BarcodeConfig {
+    targetFPS: number;
+    formats?: BarcodeFormat[];
+    tryHarder?: boolean;
+    enabledFormats?: string[];
+}
+export interface SubtitleBarConfig {
+    position: 'top' | 'bottom';
+    backgroundColor: string;
+    textColor: string;
+    fontSize: number;
+    fadeTime: number;
+}
+export interface BarcodeResult {
+    text: string;
+    format: string;
+    timestamp: number;
+    rawBytes?: Uint8Array;
+    resultPoints?: Array<{
+        x: number;
+        y: number;
+    }>;
+}
+export interface BarcodeMetrics {
+    scansPerformed: number;
+    successfulScans: number;
+    failedScans: number;
+    avgScanTime: number;
+    isEnabled: boolean;
+    isInitialized: boolean;
+    currentFormat: string | null;
+}
+/**
+ * BarcodeManager - Manages barcode/QR code scanning functionality
+ */
+export declare class BarcodeManager {
+    private reader;
+    private isInitialized;
+    private isEnabled;
+    private config;
+    private subtitleConfig;
+    private subtitleBar;
+    private fadeTimeout;
+    private lastScanTime;
+    private scanInterval;
+    private currentResult;
+    /**
+     * Result history storage
+     * Stores the last 20 scanned barcode results in a FIFO queue.
+     *
+     * Memory Management:
+     * - Each BarcodeResult is ~500 bytes (text + metadata)
+     * - Max 20 results = ~10KB memory footprint
+     * - Prevents unbounded memory growth during long scanning sessions
+     * - Oldest results are automatically removed when limit is reached
+     */
+    private resultHistory;
+    /**
+     * Maximum number of results to keep in history
+     * Limited to 20 to prevent memory leaks during extended use
+     */
+    private readonly maxHistorySize;
+    /**
+     * LocalStorage key for persisting history
+     */
+    private readonly storageKey;
+    /**
+     * Enable/disable automatic persistence
+     */
+    private persistenceEnabled;
+    private metrics;
+    /**
+     * Constructor
+     */
+    constructor(config?: Partial<BarcodeConfig>, subtitleConfig?: Partial<SubtitleBarConfig>);
+    /**
+     * Initialize the barcode scanner
+     */
+    initialize(): Promise<boolean>;
+    /**
+     * Toggle barcode scanning on/off
+     */
+    toggle(): Promise<boolean>;
+    /**
+     * Scan barcode from image element or video frame
+     */
+    scanFromImage(imageSource: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, isRealTime?: boolean): Promise<BarcodeResult | null>;
+    /**
+     * Scan continuously from video stream (polling-based)
+     * Returns interval ID that can be cleared with stopScanning()
+     */
+    startVideoScanning(videoElement: HTMLVideoElement, callback: (result: BarcodeResult) => void, intervalMs?: number): number;
+    /**
+     * Stop continuous scanning
+     */
+    stopScanning(): void;
+    /**
+     * Create subtitle bar UI element
+     */
+    private createSubtitleBar;
+    /**
+     * Update subtitle text with barcode result
+     */
+    private updateSubtitleText;
+    /**
+     * Get icon for barcode format
+     */
+    private getFormatIcon;
+    /**
+     * Hide subtitle bar
+     */
+    private hideSubtitle;
+    /**
+     * Escape HTML to prevent XSS attacks
+     */
+    private escapeHtml;
+    /**
+     * Add result to history with automatic FIFO cleanup
+     *
+     * Implements a circular buffer pattern where oldest items are removed
+     * when the history exceeds maxHistorySize (20 items).
+     *
+     * This prevents memory leaks during:
+     * - Long scanning sessions
+     * - High-frequency barcode detection
+     * - Continuous real-time scanning scenarios
+     *
+     * If persistence is enabled, also saves to localStorage.
+     *
+     * @param result - The barcode result to add to history
+     */
+    private addToHistory;
+    /**
+     * Get result history
+     */
+    getHistory(): BarcodeResult[];
+    /**
+     * Get current result
+     */
+    getCurrentResult(): BarcodeResult | null;
+    /**
+     * Get performance metrics
+     */
+    getMetrics(): BarcodeMetrics;
+    /**
+     * Set enabled barcode formats
+     */
+    setFormats(formats: BarcodeFormat[]): void;
+    /**
+     * Get list of supported formats
+     */
+    getSupportedFormats(): string[];
+    /**
+     * Clear result history
+     */
+    clearHistory(): void;
+    /**
+     * Export history to JSON format
+     *
+     * Creates a structured export containing all scan history with metadata.
+     * Useful for:
+     * - Data analysis and reporting
+     * - Debugging scan patterns
+     * - Backup/restore functionality
+     * - Integration with external systems
+     *
+     * @returns JSON string containing complete scan history
+     */
+    exportHistory(): string;
+    /**
+     * Download history as JSON file
+     *
+     * Triggers a browser download of the scan history.
+     * File is named with timestamp for easy organization.
+     */
+    downloadHistory(): void;
+    /**
+     * Enable automatic persistence to localStorage
+     *
+     * When enabled, history is automatically saved after each scan.
+     * History is also restored on initialization.
+     *
+     * @param enabled - Whether to enable persistence
+     */
+    setPersistence(enabled: boolean): void;
+    /**
+     * Save current history to localStorage
+     *
+     * Stores a simplified version of the history (without raw bytes)
+     * to reduce storage size.
+     */
+    private saveHistoryToStorage;
+    /**
+     * Load history from localStorage
+     *
+     * Restores previously saved scan results.
+     * Only loads if persistence is enabled.
+     */
+    private loadHistoryFromStorage;
+    /**
+     * Clear history from both memory and storage
+     */
+    clearHistoryFromStorage(): void;
+    /**
+     * Cleanup resources
+     */
+    cleanup(): Promise<void>;
+}
+declare const barcodeManager: BarcodeManager;
+export default barcodeManager;
+//# sourceMappingURL=barcode-manager.d.ts.map
