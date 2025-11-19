@@ -490,24 +490,18 @@ class PoliCameraApp {
             this.screenOrientationType = 'portrait-primary';
         }
 
+        // Log orientation change
+        if (this.debugMode) {
+            console.log(`📱 Screen orientation changed: ${this.screenOrientationType} (${this.screenOrientation}°)`);
+        }
+
         // Wait for browser to apply orientation changes before updating
         // This ensures video element has the correct dimensions
+        // On some mobile browsers, the resize event doesn't fire reliably,
+        // so we explicitly trigger a resize update
         setTimeout(() => {
-            // Resize detection overlay to match new video dimensions
-            if (this.detectionOverlay && this.video) {
-                const rect = this.video.getBoundingClientRect();
-                this.detectionOverlay.width = rect.width;
-                this.detectionOverlay.height = rect.height;
-            }
-
-            // Update video scaling factors with new dimensions
-            this.updateVideoScaling();
-
-            // Log orientation change
-            if (this.debugMode) {
-                console.log(`📱 Screen orientation changed: ${this.screenOrientationType} (${this.screenOrientation}°)`);
-                console.log(`   Overlay resized to: ${this.detectionOverlay?.width}x${this.detectionOverlay?.height}`);
-                console.log(`   Scale factors: ${this.cachedVideoScaleX.toFixed(3)}x, ${this.cachedVideoScaleY.toFixed(3)}y`);
+            if (this.resizeOverlay) {
+                this.resizeOverlay();
             }
         }, 100); // Small delay to allow browser layout updates
     }
@@ -1804,19 +1798,24 @@ class PoliCameraApp {
         if (!this.detectionOverlay || !this.video) return;
 
         // Set overlay canvas size to match video dimensions
-        const resizeOverlay = () => {
+        this.resizeOverlay = () => {
             const rect = this.video.getBoundingClientRect();
             this.detectionOverlay.width = rect.width;
             this.detectionOverlay.height = rect.height;
             // Update cached video scaling factors
             this.updateVideoScaling();
+
+            // Log resize in debug mode
+            if (this.debugMode) {
+                console.log(`🔄 Overlay resized: ${rect.width}x${rect.height}, Scale: ${this.cachedVideoScaleX.toFixed(3)}x, ${this.cachedVideoScaleY.toFixed(3)}y`);
+            }
         };
 
         // Initial resize
-        resizeOverlay();
+        this.resizeOverlay();
 
         // Resize on window resize
-        window.addEventListener('resize', resizeOverlay);
+        window.addEventListener('resize', this.resizeOverlay);
     }
 
     /**
