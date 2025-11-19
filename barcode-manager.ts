@@ -77,7 +77,6 @@ export class BarcodeManager {
     private fadeTimeout: number | null = null;
 
     // Scanning state
-    private scanningActive: boolean = false;
     private lastScanTime: number = 0;
     private scanInterval: number;
     private currentResult: BarcodeResult | null = null;
@@ -237,49 +236,49 @@ export class BarcodeManager {
     }
 
     /**
-     * Scan continuously from video stream
+     * Scan continuously from video stream (polling-based)
+     * Returns interval ID that can be cleared with stopScanning()
      */
-    async scanFromVideo(
+    startVideoScanning(
         videoElement: HTMLVideoElement,
-        callback: (result: BarcodeResult) => void
-    ): Promise<void> {
+        callback: (result: BarcodeResult) => void,
+        intervalMs: number = 200
+    ): number {
         if (!this.reader || !this.isEnabled) {
-            return;
+            return -1;
         }
 
-        this.scanningActive = true;
+        const scanInterval = window.setInterval(async () => {
+            try {
+                const result = await this.reader!.decodeFromVideoElement(videoElement);
 
-        try {
-            await this.reader.decodeFromVideoElement(
-                videoElement,
-                (result: Result | null, error?: Error) => {
-                    if (result) {
-                        const barcodeResult: BarcodeResult = {
-                            text: result.getText(),
-                            format: BarcodeFormat[result.getBarcodeFormat()],
-                            timestamp: Date.now(),
-                            rawBytes: result.getRawBytes(),
-                            resultPoints: result.getResultPoints()?.map((point) => ({
-                                x: point.getX(),
-                                y: point.getY(),
-                            })),
-                        };
+                if (result) {
+                    const barcodeResult: BarcodeResult = {
+                        text: result.getText(),
+                        format: BarcodeFormat[result.getBarcodeFormat()],
+                        timestamp: Date.now(),
+                        rawBytes: result.getRawBytes(),
+                        resultPoints: result.getResultPoints()?.map((point) => ({
+                            x: point.getX(),
+                            y: point.getY(),
+                        })),
+                    };
 
-                        this.currentResult = barcodeResult;
-                        this.addToHistory(barcodeResult);
-                        this.updateSubtitleText(barcodeResult);
-                        this.metrics.successfulScans++;
+                    this.currentResult = barcodeResult;
+                    this.addToHistory(barcodeResult);
+                    this.updateSubtitleText(barcodeResult);
+                    this.metrics.successfulScans++;
 
-                        callback(barcodeResult);
-                    }
-
-                    this.metrics.scansPerformed++;
+                    callback(barcodeResult);
                 }
-            );
-        } catch (error) {
-            console.error('❌ Video scanning error:', error);
-            this.scanningActive = false;
-        }
+
+                this.metrics.scansPerformed++;
+            } catch (error) {
+                // NotFoundException is expected when no barcode found
+            }
+        }, intervalMs);
+
+        return scanInterval;
     }
 
     /**
@@ -288,7 +287,6 @@ export class BarcodeManager {
     stopScanning(): void {
         if (this.reader) {
             this.reader.reset();
-            this.scanningActive = false;
             console.log('📱 Barcode scanning stopped');
         }
     }
@@ -514,7 +512,6 @@ export class BarcodeManager {
         // Reset state
         this.isEnabled = false;
         this.isInitialized = false;
-        this.scanningActive = false;
 
         console.log('✅ BarcodeManager cleanup complete');
     }

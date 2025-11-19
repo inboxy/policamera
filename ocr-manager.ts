@@ -3,7 +3,7 @@
  * Uses Tesseract.js for optical character recognition with subtitle-style display
  */
 
-import { createWorker, Worker, RecognizeResult } from 'tesseract.js';
+import { createWorker, Worker as TesseractWorker, RecognizeResult } from 'tesseract.js';
 
 export interface OCRConfig {
     language: string;
@@ -37,7 +37,7 @@ export interface SubtitleBarConfig {
  * OCR Manager class for real-time text recognition
  */
 export class OCRManager {
-    private worker: Worker | null = null;
+    private worker: TesseractWorker | null = null;
     private isInitialized: boolean = false;
     private isEnabled: boolean = false;
     private isProcessing: boolean = false;
@@ -379,8 +379,8 @@ export class OCRManager {
 
         try {
             console.log(`🔤 Changing OCR language to: ${language}`);
-            await this.worker.loadLanguage(language);
-            await this.worker.initialize(language);
+            await (this.worker as any).loadLanguage(language);
+            await (this.worker as any).initialize(language);
             this.config.language = language;
             console.log('✅ OCR language changed');
             return true;
