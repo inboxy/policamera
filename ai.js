@@ -192,6 +192,11 @@ class AIRecognitionManager {
                 throw new Error('COCO-SSD model not loaded');
             }
 
+            // Suppress TensorFlow warnings about kernel registration
+            // Multiple models (COCO-SSD, BlazeFace, PoseNet) register the same kernels
+            // which causes hundreds of harmless "already registered" warnings
+            tf.enableProdMode();
+
             console.log('🚀 Initializing TensorFlow.js backend...');
 
             // Set WebGL backend explicitly for better compatibility
