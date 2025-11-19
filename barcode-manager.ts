@@ -4,18 +4,19 @@
  * Supports 1D barcodes and 2D codes (QR, Data Matrix, PDF417, Aztec)
  */
 
-import {
-    BrowserMultiFormatReader,
-    Result,
-    BarcodeFormat,
-    DecodeHintType,
-    NotFoundException,
-} from '@zxing/library';
+// Declare global ZXing from CDN script
+declare const ZXing: {
+    BrowserMultiFormatReader: any;
+    Result: any;
+    BarcodeFormat: any;
+    DecodeHintType: any;
+    NotFoundException: any;
+};
 
 // Barcode configuration
 export interface BarcodeConfig {
     targetFPS: number; // Target frames per second for real-time scanning
-    formats?: BarcodeFormat[]; // Specific formats to detect (default: all)
+    formats?: any[]; // Specific formats to detect (default: all)
     tryHarder?: boolean; // More thorough scanning (slower but more accurate)
     enabledFormats?: string[]; // Format names for enabling/disabling
 }
@@ -53,7 +54,7 @@ export interface BarcodeMetrics {
  * BarcodeManager - Manages barcode/QR code scanning functionality
  */
 export class BarcodeManager {
-    private reader: BrowserMultiFormatReader | null = null;
+    private reader: any | null = null;
     private isInitialized: boolean = false;
     private isEnabled: boolean = false;
 
@@ -149,15 +150,15 @@ export class BarcodeManager {
 
             // Set formats if specified
             if (this.config.formats && this.config.formats.length > 0) {
-                hints.set(DecodeHintType.POSSIBLE_FORMATS, this.config.formats);
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, this.config.formats);
             }
 
             // Enable try harder mode for more accuracy
             if (this.config.tryHarder) {
-                hints.set(DecodeHintType.TRY_HARDER, true);
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
             }
 
-            this.reader = new BrowserMultiFormatReader(hints);
+            this.reader = new ZXing.BrowserMultiFormatReader(hints);
 
             // Create subtitle bar UI
             this.createSubtitleBar();
@@ -217,7 +218,7 @@ export class BarcodeManager {
             this.metrics.scansPerformed++;
 
             // Decode barcode from image
-            const result: Result = await this.reader.decodeFromImageElement(imageSource as any);
+            const result: any = await this.reader.decodeFromImageElement(imageSource as any);
 
             const scanTime = performance.now() - startTime;
             this.metrics.totalScanTime += scanTime;
@@ -226,10 +227,10 @@ export class BarcodeManager {
             // Create barcode result
             const barcodeResult: BarcodeResult = {
                 text: result.getText(),
-                format: BarcodeFormat[result.getBarcodeFormat()],
+                format: ZXing.BarcodeFormat[result.getBarcodeFormat()],
                 timestamp: Date.now(),
                 rawBytes: result.getRawBytes(),
-                resultPoints: result.getResultPoints()?.map((point) => ({
+                resultPoints: result.getResultPoints()?.map((point: any) => ({
                     x: point.getX(),
                     y: point.getY(),
                 })),
@@ -251,7 +252,7 @@ export class BarcodeManager {
             return barcodeResult;
         } catch (error) {
             // NotFoundException is expected when no barcode is found
-            if (!(error instanceof NotFoundException)) {
+            if (!(error instanceof ZXing.NotFoundException)) {
                 this.metrics.failedScans++;
                 console.warn('⚠️ Barcode scan error:', error);
             }
@@ -279,10 +280,10 @@ export class BarcodeManager {
                 if (result) {
                     const barcodeResult: BarcodeResult = {
                         text: result.getText(),
-                        format: BarcodeFormat[result.getBarcodeFormat()],
+                        format: ZXing.BarcodeFormat[result.getBarcodeFormat()],
                         timestamp: Date.now(),
                         rawBytes: result.getRawBytes(),
-                        resultPoints: result.getResultPoints()?.map((point) => ({
+                        resultPoints: result.getResultPoints()?.map((point: any) => ({
                             x: point.getX(),
                             y: point.getY(),
                         })),
@@ -492,7 +493,7 @@ export class BarcodeManager {
     /**
      * Set enabled barcode formats
      */
-    setFormats(formats: BarcodeFormat[]): void {
+    setFormats(formats: any[]): void {
         this.config.formats = formats;
 
         // Reinitialize reader with new formats
@@ -506,7 +507,7 @@ export class BarcodeManager {
      * Get list of supported formats
      */
     getSupportedFormats(): string[] {
-        return Object.keys(BarcodeFormat).filter((key) => isNaN(Number(key)));
+        return Object.keys(ZXing.BarcodeFormat).filter((key) => isNaN(Number(key)));
     }
 
     /**
@@ -543,7 +544,7 @@ export class BarcodeManager {
                 maxHistorySize: this.maxHistorySize,
                 currentHistorySize: this.resultHistory.length,
                 targetFPS: this.config.targetFPS,
-                formats: this.config.formats?.map(f => BarcodeFormat[f]) || 'all',
+                formats: this.config.formats?.map(f => ZXing.BarcodeFormat[f]) || 'all',
             },
             metrics: this.getMetrics(),
             history: this.resultHistory.map(result => ({

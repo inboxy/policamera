@@ -3,10 +3,9 @@
  * Real-time barcode scanning using ZXing library
  * Supports 1D barcodes and 2D codes (QR, Data Matrix, PDF417, Aztec)
  */
-import { BarcodeFormat } from '@zxing/library';
 export interface BarcodeConfig {
     targetFPS: number;
-    formats?: BarcodeFormat[];
+    formats?: any[];
     tryHarder?: boolean;
     enabledFormats?: string[];
 }
@@ -151,7 +150,7 @@ export declare class BarcodeManager {
     /**
      * Set enabled barcode formats
      */
-    setFormats(formats: BarcodeFormat[]): void;
+    setFormats(formats: any[]): void;
     /**
      * Get list of supported formats
      */

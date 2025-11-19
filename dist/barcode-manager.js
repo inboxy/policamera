@@ -3,7 +3,6 @@
  * Real-time barcode scanning using ZXing library
  * Supports 1D barcodes and 2D codes (QR, Data Matrix, PDF417, Aztec)
  */
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType, NotFoundException, } from '@zxing/library';
 /**
  * BarcodeManager - Manages barcode/QR code scanning functionality
  */
@@ -88,13 +87,13 @@ export class BarcodeManager {
             const hints = new Map();
             // Set formats if specified
             if (this.config.formats && this.config.formats.length > 0) {
-                hints.set(DecodeHintType.POSSIBLE_FORMATS, this.config.formats);
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, this.config.formats);
             }
             // Enable try harder mode for more accuracy
             if (this.config.tryHarder) {
-                hints.set(DecodeHintType.TRY_HARDER, true);
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
             }
-            this.reader = new BrowserMultiFormatReader(hints);
+            this.reader = new ZXing.BrowserMultiFormatReader(hints);
             // Create subtitle bar UI
             this.createSubtitleBar();
             this.isInitialized = true;
@@ -149,7 +148,7 @@ export class BarcodeManager {
             // Create barcode result
             const barcodeResult = {
                 text: result.getText(),
-                format: BarcodeFormat[result.getBarcodeFormat()],
+                format: ZXing.BarcodeFormat[result.getBarcodeFormat()],
                 timestamp: Date.now(),
                 rawBytes: result.getRawBytes(),
                 resultPoints: result.getResultPoints()?.map((point) => ({
@@ -169,7 +168,7 @@ export class BarcodeManager {
         }
         catch (error) {
             // NotFoundException is expected when no barcode is found
-            if (!(error instanceof NotFoundException)) {
+            if (!(error instanceof ZXing.NotFoundException)) {
                 this.metrics.failedScans++;
                 console.warn('⚠️ Barcode scan error:', error);
             }
@@ -190,7 +189,7 @@ export class BarcodeManager {
                 if (result) {
                     const barcodeResult = {
                         text: result.getText(),
-                        format: BarcodeFormat[result.getBarcodeFormat()],
+                        format: ZXing.BarcodeFormat[result.getBarcodeFormat()],
                         timestamp: Date.now(),
                         rawBytes: result.getRawBytes(),
                         resultPoints: result.getResultPoints()?.map((point) => ({
@@ -389,7 +388,7 @@ export class BarcodeManager {
      * Get list of supported formats
      */
     getSupportedFormats() {
-        return Object.keys(BarcodeFormat).filter((key) => isNaN(Number(key)));
+        return Object.keys(ZXing.BarcodeFormat).filter((key) => isNaN(Number(key)));
     }
     /**
      * Clear result history
@@ -424,7 +423,7 @@ export class BarcodeManager {
                 maxHistorySize: this.maxHistorySize,
                 currentHistorySize: this.resultHistory.length,
                 targetFPS: this.config.targetFPS,
-                formats: this.config.formats?.map(f => BarcodeFormat[f]) || 'all',
+                formats: this.config.formats?.map(f => ZXing.BarcodeFormat[f]) || 'all',
             },
             metrics: this.getMetrics(),
             history: this.resultHistory.map(result => ({

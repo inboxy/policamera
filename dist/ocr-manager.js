@@ -2,7 +2,6 @@
  * OCR Manager for PoliCamera
  * Uses Tesseract.js for optical character recognition with subtitle-style display
  */
-import { createWorker } from 'tesseract.js';
 /**
  * OCR Manager class for real-time text recognition
  */
@@ -75,7 +74,7 @@ export class OCRManager {
         try {
             console.log('🔤 Initializing Tesseract OCR worker...');
             console.log(`Language: ${this.config.language}`);
-            this.worker = await createWorker(this.config.language, 1, {
+            this.worker = await Tesseract.createWorker(this.config.language, 1, {
                 logger: (m) => {
                     if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract') {
                         console.log(`📥 OCR: ${m.status}... ${Math.round((m.progress || 0) * 100)}%`);
