@@ -195,7 +195,7 @@ export class OCRManager {
         // Frame throttling for real-time performance
         if (isRealTime) {
             const currentTime = performance.now();
-            if (currentTime - this.lastProcessTime < this.targetFrameTime) {
+            if (currentTime - this.lastProcessTime < this.targetFrameTime && this.currentResult !== null) {
                 return this.currentResult; // Return cached result
             }
 
