@@ -665,9 +665,15 @@ body {
   right: 24px;
 }
 
-/* Settings FAB */
-.settings-fab {
-  top: 24px;
+/* OCR FAB */
+.ocr-fab {
+  bottom: 528px;
+  right: 24px;
+}
+
+/* Barcode Scanner FAB */
+.barcode-fab {
+  bottom: 600px;
   right: 24px;
 }
 
@@ -680,6 +686,8 @@ body {
   .face-fab { bottom: 272px; }
   .pose-fab { bottom: 336px; }
   .qr-fab { bottom: 400px; }
+  .ocr-fab { bottom: 464px; }
+  .barcode-fab { bottom: 528px; }
 }
 
 @media (max-height: 600px) {
@@ -697,6 +705,64 @@ body {
   .face-fab { bottom: 236px; }
   .pose-fab { bottom: 292px; }
   .qr-fab { bottom: 348px; }
+  .ocr-fab { bottom: 404px; }
+  .barcode-fab { bottom: 460px; }
+}
+
+/* Landscape mode: Move buttons to top edge, horizontally aligned */
+@media (orientation: landscape) and (max-height: 600px) {
+  /* Reset bottom positioning */
+  .fab {
+    bottom: auto;
+    width: 48px;
+    height: 48px;
+  }
+
+  /* Position buttons horizontally at top */
+  .start-fab {
+    top: 16px;
+    right: 16px;
+  }
+
+  .capture-fab {
+    top: 16px;
+    right: 76px;
+  }
+
+  .camera-switch-fab {
+    top: 16px;
+    right: 136px;
+  }
+
+  .barcode-fab {
+    top: 16px;
+    right: 196px;
+  }
+
+  .ocr-fab {
+    top: 16px;
+    right: 256px;
+  }
+
+  .depth-fab {
+    top: 16px;
+    right: 316px;
+  }
+
+  .face-fab {
+    top: 16px;
+    right: 376px;
+  }
+
+  .pose-fab {
+    top: 16px;
+    right: 436px;
+  }
+
+  .qr-fab {
+    top: 16px;
+    right: 496px;
+  }
 }
 
 .photos-grid {
