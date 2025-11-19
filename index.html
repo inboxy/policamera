@@ -176,6 +176,14 @@
         <button class="fab camera-switch-fab" id="cameraSwitchFab" aria-label="Switch camera" style="display: none;">
             <span class="material-icons">cameraswitch</span>
         </button>
+
+        <button class="fab ocr-fab" id="ocrFab" aria-label="Toggle OCR text recognition" style="display: none;">
+            <span class="material-icons">text_fields</span>
+        </button>
+
+        <button class="fab barcode-fab" id="barcodeFab" aria-label="Toggle barcode scanner" style="display: none;">
+            <span class="material-icons">qr_code_scanner</span>
+        </button>
     </div>
 
     <!-- External Libraries -->
@@ -187,6 +195,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+
+    <!-- OCR and Barcode Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 
     <!-- Core Utilities (must load first) -->
     <script src="constants.js"></script>
@@ -208,6 +220,11 @@
     <script src="pose.js"></script>
     <script src="face.js"></script>
     <script src="depth.js"></script>
+
+    <!-- TypeScript Compiled Modules -->
+    <script src="dist/app-state.js"></script>
+    <script src="dist/ocr-manager.js"></script>
+    <script src="dist/barcode-manager.js"></script>
 
     <!-- Main Application (must load last) -->
     <script src="app.js"></script>

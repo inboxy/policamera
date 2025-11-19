@@ -169,11 +169,8 @@ describe('OCRManager', () => {
         });
 
         test('should handle recognition errors gracefully', async () => {
-            await ocrManager.initialize();
-            await ocrManager.toggle();
-
             // Mock error in recognition
-            mockWorker.recognize.mockRejectedValueOnce(new Error('Recognition failed'));
+            mockRecognize.mockRejectedValueOnce(new Error('Recognition failed'));
 
             const mockImage = document.createElement('img');
             const result = await ocrManager.recognizeText(mockImage);
@@ -190,7 +187,11 @@ describe('OCRManager', () => {
 
         test('should store recognition results in history', async () => {
             const mockImage = document.createElement('img');
-            await ocrManager.recognizeText(mockImage);
+            const result = await ocrManager.recognizeText(mockImage);
+
+            // Result should not be null
+            expect(result).toBeTruthy();
+            expect(result?.text).toBe('Sample OCR Text');
 
             const history = ocrManager.getHistory();
             expect(history.length).toBe(1);
