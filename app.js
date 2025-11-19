@@ -23,6 +23,9 @@ class PoliCameraApp {
         this.currentFaces = [];
         this.isDepthPredictionEnabled = false;
         this.currentDepthMap = null;
+        this.isOCREnabled = false;
+        this.isBarcodeEnabled = false;
+        this.barcodeIntervalId = null;
 
         // Video scaling cache (performance optimization)
         this.cachedVideoScaleX = 1;
@@ -101,6 +104,8 @@ class PoliCameraApp {
         this.faceFab = document.getElementById('faceFab');
         this.depthFab = document.getElementById('depthFab');
         this.cameraSwitchFab = document.getElementById('cameraSwitchFab');
+        this.ocrFab = document.getElementById('ocrFab');
+        this.barcodeFab = document.getElementById('barcodeFab');
         this.photosOverlay = document.getElementById('photosOverlay');
         this.stitchBtn = document.getElementById('stitchBtn');
 
@@ -182,6 +187,8 @@ class PoliCameraApp {
         this.faceFab.addEventListener('click', () => this.toggleFaceDetection());
         this.depthFab.addEventListener('click', () => this.toggleDepthPrediction());
         this.cameraSwitchFab.addEventListener('click', () => this.switchCamera());
+        this.ocrFab.addEventListener('click', () => this.toggleOCR());
+        this.barcodeFab.addEventListener('click', () => this.toggleBarcodeScanner());
         this.stitchBtn.addEventListener('click', () => this.stitchSelectedPhotos());
         this.gpsToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -690,6 +697,22 @@ class PoliCameraApp {
                 } else {
                     console.warn('⚠️ Depth manager not available - button hidden');
                 }
+
+                // Show OCR button if available
+                if (window.ocrManager) {
+                    this.ocrFab.style.display = 'flex';
+                    console.log('✅ OCR button shown');
+                } else {
+                    console.warn('⚠️ OCR manager not available - button hidden');
+                }
+
+                // Show barcode button if available
+                if (window.barcodeManager) {
+                    this.barcodeFab.style.display = 'flex';
+                    console.log('✅ Barcode scanner button shown');
+                } else {
+                    console.warn('⚠️ Barcode manager not available - button hidden');
+                }
             }
 
             // Show errors if any
@@ -978,6 +1001,90 @@ class PoliCameraApp {
         } catch (error) {
             console.error('❌ Failed to toggle depth prediction:', error);
             this.showError('Failed to initialize depth prediction: ' + error.message);
+        }
+    }
+
+    /**
+     * Toggle OCR text recognition
+     */
+    async toggleOCR() {
+        if (!window.ocrManager) {
+            this.showError('OCR not available');
+            return;
+        }
+
+        try {
+            // Initialize on first use
+            if (!window.ocrManager.getMetrics().isInitialized) {
+                this.showToast('Initializing OCR...', 'text_fields');
+                await window.ocrManager.initialize();
+            }
+
+            const isEnabled = await window.ocrManager.toggle();
+            this.isOCREnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.ocrFab.classList.add('active');
+                this.showToast('OCR enabled - Text appears in subtitle', 'text_fields');
+            } else {
+                this.ocrFab.classList.remove('active');
+                this.showToast('OCR disabled', 'text_fields');
+            }
+        } catch (error) {
+            console.error('Failed to toggle OCR:', error);
+            this.showError('Failed to initialize OCR');
+        }
+    }
+
+    /**
+     * Toggle barcode/QR code scanner
+     */
+    async toggleBarcodeScanner() {
+        if (!window.barcodeManager) {
+            this.showError('Barcode scanner not available');
+            return;
+        }
+
+        try {
+            // Initialize on first use
+            if (!window.barcodeManager.getMetrics().isInitialized) {
+                this.showToast('Initializing barcode scanner...', 'qr_code_scanner');
+                await window.barcodeManager.initialize();
+            }
+
+            const isEnabled = await window.barcodeManager.toggle();
+            this.isBarcodeEnabled = isEnabled;
+
+            // Update button styling
+            if (isEnabled) {
+                this.barcodeFab.classList.add('active');
+                this.showToast('Barcode scanner enabled', 'qr_code_scanner');
+
+                // Start continuous scanning from video
+                if (this.video && isEnabled) {
+                    this.barcodeIntervalId = window.barcodeManager.startVideoScanning(
+                        this.video,
+                        (result) => {
+                            console.log(`📱 Scanned ${result.format}: ${result.text}`);
+                        },
+                        200 // Scan every 200ms
+                    );
+                }
+            } else {
+                this.barcodeFab.classList.remove('active');
+                this.showToast('Barcode scanner disabled', 'qr_code_scanner');
+
+                // Stop continuous scanning
+                if (this.barcodeIntervalId) {
+                    clearInterval(this.barcodeIntervalId);
+                    this.barcodeIntervalId = null;
+                    window.barcodeManager.stopScanning();
+                }
+            }
+        } catch (error) {
+            console.error('Failed to toggle barcode scanner:', error);
+            this.showError('Failed to initialize barcode scanner');
         }
     }
 
@@ -1788,6 +1895,11 @@ class PoliCameraApp {
                     }
                     this.currentDepthMap = null;
                 }
+            }
+
+            // Run OCR if enabled
+            if (this.isOCREnabled && window.ocrManager) {
+                await window.ocrManager.recognizeText(this.video, true);
             }
 
             // Only draw if we got results (frame wasn't skipped for performance)
