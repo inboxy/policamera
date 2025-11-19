@@ -1088,6 +1088,20 @@ class AIRecognitionManager {
      * Optimized to avoid splice and reduce object creation
      */
     trackObjects(detections) {
+        // Enforce max tracked objects limit to prevent memory growth
+        const MAX_TRACKED_OBJECTS = 50;
+        if (this.trackedObjects.length > MAX_TRACKED_OBJECTS) {
+            // Remove oldest objects that haven't been seen recently
+            this.trackedObjects.sort((a, b) => {
+                // Prioritize objects seen more recently and more frequently
+                const aScore = a.framesSeen - (a.missingFrames * 10);
+                const bScore = b.framesSeen - (b.missingFrames * 10);
+                return bScore - aScore;
+            });
+            this.trackedObjects = this.trackedObjects.slice(0, MAX_TRACKED_OBJECTS);
+            console.warn(`Tracked objects limit reached. Pruned to ${MAX_TRACKED_OBJECTS} objects.`);
+        }
+
         if (detections.length === 0) {
             // Increment missing frame count for all tracked objects
             for (let i = 0; i < this.trackedObjects.length; i++) {

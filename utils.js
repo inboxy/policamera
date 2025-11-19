@@ -30,7 +30,7 @@ class Utils {
     }
 
     /**
-     * Set a cookie
+     * Set a cookie with security flags
      * @param {string} name - Cookie name
      * @param {string} value - Cookie value
      * @param {number} days - Days until expiration
@@ -39,7 +39,9 @@ class Utils {
         const date = new Date();
         date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
         const expires = `expires=${date.toUTCString()}`;
-        document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict`;
+        // Add Secure flag if using HTTPS
+        const secure = window.location.protocol === 'https:' ? ';Secure' : '';
+        document.cookie = `${name}=${value};${expires};path=/;SameSite=Strict${secure}`;
     }
 
     /**
@@ -395,6 +397,56 @@ class Utils {
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
+    }
+
+    /**
+     * Check storage quota and return usage information
+     * @returns {Promise<Object>} Storage quota info with usage percentage
+     */
+    static async checkStorageQuota() {
+        if ('storage' in navigator && 'estimate' in navigator.storage) {
+            try {
+                const estimate = await navigator.storage.estimate();
+                const percentUsed = (estimate.usage / estimate.quota) * 100;
+                return {
+                    usage: estimate.usage,
+                    quota: estimate.quota,
+                    percentUsed: percentUsed,
+                    available: estimate.quota - estimate.usage,
+                    usageFormatted: this.formatBytes(estimate.usage),
+                    quotaFormatted: this.formatBytes(estimate.quota),
+                    availableFormatted: this.formatBytes(estimate.quota - estimate.usage),
+                    isNearLimit: percentUsed > 90,
+                    isAtLimit: percentUsed > 95
+                };
+            } catch (error) {
+                console.error('Failed to check storage quota:', error);
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sanitize HTML string to prevent XSS
+     * Enhanced version with more thorough sanitization
+     * @param {string} html - HTML string to sanitize
+     * @returns {string} Sanitized HTML
+     */
+    static sanitizeHtml(html) {
+        if (typeof html !== 'string') return '';
+
+        // Create a temporary div for sanitization
+        const div = document.createElement('div');
+        div.textContent = html;
+        let sanitized = div.innerHTML;
+
+        // Remove any remaining script tags or event handlers
+        sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+        sanitized = sanitized.replace(/javascript:/gi, '');
+
+        return sanitized;
     }
 }
 

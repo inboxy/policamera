@@ -52,7 +52,8 @@ const AppConstants = {
         TOAST_DURATION: 2000,
         ERROR_TOAST_DURATION: 4000,
         STITCH_SUCCESS_TOAST: 5000,
-        DETECTION_TOAST_DURATION: 2000
+        DETECTION_TOAST_DURATION: 2000,
+        TARGET_FRAME_TIME: 33 // ~30 FPS target
     },
 
     // Storage

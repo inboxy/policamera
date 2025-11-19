@@ -67,49 +67,53 @@ class DepthPredictionManager {
             // Dynamically import Transformers.js (ES modules)
             console.log('📦 Loading Transformers.js library...');
 
-            // Try multiple CDNs for reliability
+            // Try multiple CDNs in parallel for faster loading
             const cdnUrls = [
                 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2',
                 'https://unpkg.com/@huggingface/transformers@3.0.2/dist/transformers.min.js'
             ];
 
-            let loadError = null;
-            for (const url of cdnUrls) {
-                try {
-                    console.log(`Trying CDN: ${url}`);
-                    const importPromise = import(url);
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Import timeout after 30s')), 30000)
-                    );
+            console.log('📦 Loading Transformers.js from multiple CDNs in parallel...');
 
-                    this.transformers = await Promise.race([importPromise, timeoutPromise]);
-                    console.log('✅ Transformers.js library loaded from:', url);
-                    console.log('Transformers version:', this.transformers.env?.version || 'unknown');
+            // Create promises for each CDN with timeout
+            const importPromises = cdnUrls.map((url, index) => {
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        const timeoutPromise = new Promise((_, timeoutReject) =>
+                            setTimeout(() => timeoutReject(new Error(`Timeout loading from ${url}`)), 30000)
+                        );
 
-                    // Configure Transformers.js environment for better reliability
-                    if (this.transformers.env) {
-                        // Allow browser cache for models (reduces re-downloads)
-                        this.transformers.env.useBrowserCache = true;
-                        this.transformers.env.allowLocalModels = true;
-                        this.transformers.env.allowRemoteModels = true;
-
-                        // Add retry configuration for fetch requests
-                        this.transformers.env.useCustomCache = false;
-
-                        console.log('✅ Transformers.js environment configured for reliability');
+                        const result = await Promise.race([import(url), timeoutPromise]);
+                        console.log(`✅ CDN ${index + 1} loaded successfully: ${url}`);
+                        resolve({ url, result });
+                    } catch (error) {
+                        console.warn(`❌ CDN ${index + 1} failed: ${url} - ${error.message}`);
+                        reject(error);
                     }
+                });
+            });
 
-                    loadError = null;
-                    break; // Success, exit loop
-                } catch (err) {
-                    console.warn(`Failed to load from ${url}:`, err.message);
-                    loadError = err;
-                    continue; // Try next CDN
+            try {
+                // Use Promise.any to get the first successful load
+                const { url, result } = await Promise.any(importPromises);
+                this.transformers = result;
+                console.log('✅ Transformers.js library loaded from:', url);
+                console.log('Transformers version:', this.transformers.env?.version || 'unknown');
+
+                // Configure Transformers.js environment for better reliability
+                if (this.transformers.env) {
+                    // Allow browser cache for models (reduces re-downloads)
+                    this.transformers.env.useBrowserCache = true;
+                    this.transformers.env.allowLocalModels = true;
+                    this.transformers.env.allowRemoteModels = true;
+
+                    // Add retry configuration for fetch requests
+                    this.transformers.env.useCustomCache = false;
+
+                    console.log('✅ Transformers.js environment configured for reliability');
                 }
-            }
-
-            if (loadError) {
-                throw new Error('Failed to load Transformers.js from all CDNs: ' + loadError.message);
+            } catch (aggregateError) {
+                throw new Error('Failed to load Transformers.js from all CDNs: ' + aggregateError.errors.map(e => e.message).join(', '));
             }
 
             // Initialize canvases early
@@ -285,11 +289,18 @@ class DepthPredictionManager {
 
         let output = null;
         let depthTensor = null;
+        const tensorsToCleanup = [];
 
         try {
             // Dispose previous depth map to prevent memory leak
-            if (this.lastDepthMap && this.lastDepthMap.dispose) {
-                this.lastDepthMap.dispose();
+            if (this.lastDepthMap) {
+                try {
+                    if (this.lastDepthMap.dispose) {
+                        this.lastDepthMap.dispose();
+                    }
+                } catch (e) {
+                    console.warn('Failed to dispose previous depth map:', e);
+                }
                 this.lastDepthMap = null;
             }
 
@@ -299,6 +310,7 @@ class DepthPredictionManager {
             // Extract depth tensor from output
             // Transformers.js returns { predicted_depth: Tensor, depth: RawImage }
             depthTensor = output.predicted_depth;
+            tensorsToCleanup.push(depthTensor);
 
             // Convert to normalized 0-255 tensor (inverted: white=near, black=far)
             const normalizedDepth = await this.normalizeDepthTensor(depthTensor);
@@ -313,18 +325,19 @@ class DepthPredictionManager {
             return null;
         } finally {
             // Always cleanup intermediate tensors to prevent memory leaks
-            // The original depthTensor from Transformers.js needs to be disposed
-            // We keep the normalizedDepth (stored in this.lastDepthMap) which is a new TF tensor
-            if (depthTensor && depthTensor !== this.lastDepthMap) {
-                try {
-                    // Transformers.js tensors may have different disposal methods
-                    if (typeof depthTensor.dispose === 'function') {
-                        depthTensor.dispose();
-                    } else if (typeof depthTensor.release === 'function') {
-                        depthTensor.release();
+            for (const tensor of tensorsToCleanup) {
+                if (tensor && tensor !== this.lastDepthMap) {
+                    try {
+                        // Transformers.js tensors may have different disposal methods
+                        if (typeof tensor.dispose === 'function') {
+                            tensor.dispose();
+                        } else if (typeof tensor.release === 'function') {
+                            tensor.release();
+                        }
+                    } catch (e) {
+                        // Ignore disposal errors for intermediate tensors
+                        console.warn('Tensor cleanup warning:', e.message);
                     }
-                } catch (e) {
-                    // Ignore disposal errors for intermediate tensors
                 }
             }
         }

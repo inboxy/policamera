@@ -87,6 +87,25 @@ class DatabaseManager {
      * @returns {Promise<number>}
      */
     async storePhoto(photoData) {
+        // Check storage quota before storing
+        if ('storage' in navigator && 'estimate' in navigator.storage) {
+            try {
+                const estimate = await navigator.storage.estimate();
+                const percentUsed = (estimate.usage / estimate.quota) * 100;
+
+                if (percentUsed > 95) {
+                    throw new Error('Storage quota exceeded. Please delete old photos to free up space.');
+                } else if (percentUsed > 90) {
+                    console.warn(`Storage quota nearly full: ${percentUsed.toFixed(1)}% used`);
+                }
+            } catch (error) {
+                if (error.message.includes('Storage quota exceeded')) {
+                    throw error; // Re-throw quota errors
+                }
+                console.warn('Could not check storage quota:', error);
+            }
+        }
+
         const now = new Date();
 
         const record = {
@@ -327,6 +346,132 @@ class DatabaseManager {
                 totalGPSLogs: gpsLogs.length
             }
         };
+    }
+
+    /**
+     * Export user data to JSON file and trigger download
+     * @param {string} userId
+     * @returns {Promise<boolean>}
+     */
+    async exportToFile(userId) {
+        try {
+            const data = await this.exportUserData(userId);
+
+            // Create JSON blob
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `policamera-export-${userId}-${Date.now()}.json`;
+
+            // Trigger download
+            document.body.appendChild(a);
+            a.click();
+
+            // Cleanup
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            console.log('✅ Data exported successfully');
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to export data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Export user data to CSV format for GPS logs
+     * @param {string} userId
+     * @returns {Promise<boolean>}
+     */
+    async exportGPSToCSV(userId) {
+        try {
+            const gpsLogs = await this.getGPSLogsForUser(userId);
+
+            if (gpsLogs.length === 0) {
+                throw new Error('No GPS data to export');
+            }
+
+            // Create CSV header
+            const headers = ['Timestamp', 'Date', 'Time', 'Latitude', 'Longitude', 'Altitude', 'Accuracy', 'Heading', 'Speed'];
+            let csvContent = headers.join(',') + '\n';
+
+            // Add data rows
+            gpsLogs.forEach(log => {
+                const row = [
+                    log.timestamp || '',
+                    log.date || '',
+                    log.time || '',
+                    log.lat || '',
+                    log.lon || '',
+                    log.alt || '',
+                    log.accuracy || '',
+                    log.heading || '',
+                    log.speed || ''
+                ];
+                csvContent += row.join(',') + '\n';
+            });
+
+            // Create CSV blob
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `policamera-gps-${userId}-${Date.now()}.csv`;
+
+            // Trigger download
+            document.body.appendChild(a);
+            a.click();
+
+            // Cleanup
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            console.log('✅ GPS data exported to CSV successfully');
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to export GPS data to CSV:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete all data for a specific user (GDPR compliance)
+     * @param {string} userId
+     * @returns {Promise<Object>}
+     */
+    async deleteAllUserData(userId) {
+        try {
+            const [photos, gpsLogs] = await Promise.all([
+                this.getPhotosForUser(userId),
+                this.getGPSLogsForUser(userId)
+            ]);
+
+            // Delete all photos
+            for (const photo of photos) {
+                await this.deleteRecord(this.stores.photos, photo.id);
+            }
+
+            // Delete all GPS logs
+            for (const log of gpsLogs) {
+                await this.deleteRecord(this.stores.gpsLogs, log.id);
+            }
+
+            console.log(`✅ Deleted all data for user ${userId}`);
+            return {
+                photosDeleted: photos.length,
+                gpsLogsDeleted: gpsLogs.length
+            };
+        } catch (error) {
+            console.error('❌ Failed to delete user data:', error);
+            throw error;
+        }
     }
 
     /**
