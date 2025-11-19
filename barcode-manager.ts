@@ -81,9 +81,33 @@ export class BarcodeManager {
     private scanInterval: number;
     private currentResult: BarcodeResult | null = null;
 
-    // Result history
+    /**
+     * Result history storage
+     * Stores the last 20 scanned barcode results in a FIFO queue.
+     *
+     * Memory Management:
+     * - Each BarcodeResult is ~500 bytes (text + metadata)
+     * - Max 20 results = ~10KB memory footprint
+     * - Prevents unbounded memory growth during long scanning sessions
+     * - Oldest results are automatically removed when limit is reached
+     */
     private resultHistory: BarcodeResult[] = [];
+
+    /**
+     * Maximum number of results to keep in history
+     * Limited to 20 to prevent memory leaks during extended use
+     */
     private readonly maxHistorySize: number = 20;
+
+    /**
+     * LocalStorage key for persisting history
+     */
+    private readonly storageKey: string = 'policamera-barcode-history';
+
+    /**
+     * Enable/disable automatic persistence
+     */
+    private persistenceEnabled: boolean = false;
 
     // Performance metrics
     private metrics = {
@@ -407,15 +431,30 @@ export class BarcodeManager {
     }
 
     /**
-     * Add result to history
+     * Add result to history with automatic FIFO cleanup
+     *
+     * Implements a circular buffer pattern where oldest items are removed
+     * when the history exceeds maxHistorySize (20 items).
+     *
+     * This prevents memory leaks during:
+     * - Long scanning sessions
+     * - High-frequency barcode detection
+     * - Continuous real-time scanning scenarios
+     *
+     * If persistence is enabled, also saves to localStorage.
+     *
+     * @param result - The barcode result to add to history
      */
     private addToHistory(result: BarcodeResult): void {
         this.resultHistory.push(result);
 
-        // Limit history size
+        // FIFO cleanup: Remove oldest when exceeding limit
         if (this.resultHistory.length > this.maxHistorySize) {
             this.resultHistory.shift();
         }
+
+        // Save to storage if persistence enabled
+        this.saveHistoryToStorage();
     }
 
     /**
@@ -476,7 +515,152 @@ export class BarcodeManager {
     clearHistory(): void {
         this.resultHistory = [];
         this.currentResult = null;
+        this.clearHistoryFromStorage();
         console.log('📱 Barcode history cleared');
+    }
+
+    /**
+     * Export history to JSON format
+     *
+     * Creates a structured export containing all scan history with metadata.
+     * Useful for:
+     * - Data analysis and reporting
+     * - Debugging scan patterns
+     * - Backup/restore functionality
+     * - Integration with external systems
+     *
+     * @returns JSON string containing complete scan history
+     */
+    exportHistory(): string {
+        const exportData = {
+            exportVersion: '1.0',
+            timestamp: new Date().toISOString(),
+            device: {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+            },
+            scanner: {
+                maxHistorySize: this.maxHistorySize,
+                currentHistorySize: this.resultHistory.length,
+                targetFPS: this.config.targetFPS,
+                formats: this.config.formats?.map(f => BarcodeFormat[f]) || 'all',
+            },
+            metrics: this.getMetrics(),
+            history: this.resultHistory.map(result => ({
+                text: result.text,
+                format: result.format,
+                timestamp: result.timestamp,
+                timestampISO: new Date(result.timestamp).toISOString(),
+                hasRawBytes: !!result.rawBytes,
+                resultPointsCount: result.resultPoints?.length || 0,
+            })),
+        };
+
+        return JSON.stringify(exportData, null, 2);
+    }
+
+    /**
+     * Download history as JSON file
+     *
+     * Triggers a browser download of the scan history.
+     * File is named with timestamp for easy organization.
+     */
+    downloadHistory(): void {
+        try {
+            const jsonData = this.exportHistory();
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `barcode-history-${Date.now()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            console.log('📥 Barcode history downloaded');
+        } catch (error) {
+            console.error('Failed to download history:', error);
+        }
+    }
+
+    /**
+     * Enable automatic persistence to localStorage
+     *
+     * When enabled, history is automatically saved after each scan.
+     * History is also restored on initialization.
+     *
+     * @param enabled - Whether to enable persistence
+     */
+    setPersistence(enabled: boolean): void {
+        this.persistenceEnabled = enabled;
+        console.log(`📱 Barcode history persistence ${enabled ? 'enabled' : 'disabled'}`);
+
+        if (enabled) {
+            // Load existing history
+            this.loadHistoryFromStorage();
+        }
+    }
+
+    /**
+     * Save current history to localStorage
+     *
+     * Stores a simplified version of the history (without raw bytes)
+     * to reduce storage size.
+     */
+    private saveHistoryToStorage(): void {
+        if (!this.persistenceEnabled) return;
+
+        try {
+            const simplifiedHistory = this.resultHistory.map(result => ({
+                text: result.text,
+                format: result.format,
+                timestamp: result.timestamp,
+                // Omit rawBytes and resultPoints to save space
+            }));
+
+            localStorage.setItem(this.storageKey, JSON.stringify(simplifiedHistory));
+        } catch (error) {
+            console.warn('Failed to save barcode history to storage:', error);
+            // Disable persistence if storage is full
+            if (error instanceof Error && error.name === 'QuotaExceededError') {
+                this.persistenceEnabled = false;
+                console.warn('Storage quota exceeded - persistence disabled');
+            }
+        }
+    }
+
+    /**
+     * Load history from localStorage
+     *
+     * Restores previously saved scan results.
+     * Only loads if persistence is enabled.
+     */
+    private loadHistoryFromStorage(): void {
+        try {
+            const stored = localStorage.getItem(this.storageKey);
+            if (!stored) return;
+
+            const history = JSON.parse(stored) as BarcodeResult[];
+            // Validate and restore history
+            if (Array.isArray(history)) {
+                this.resultHistory = history.slice(-this.maxHistorySize);
+                console.log(`📱 Loaded ${this.resultHistory.length} barcode results from storage`);
+            }
+        } catch (error) {
+            console.warn('Failed to load barcode history from storage:', error);
+        }
+    }
+
+    /**
+     * Clear history from both memory and storage
+     */
+    clearHistoryFromStorage(): void {
+        try {
+            localStorage.removeItem(this.storageKey);
+            console.log('📱 Barcode history cleared from storage');
+        } catch (error) {
+            console.warn('Failed to clear storage:', error);
+        }
     }
 
     /**
