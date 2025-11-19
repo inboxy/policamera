@@ -716,6 +716,24 @@ class PoliCameraApp {
             }
         };
 
+        // Set up permission monitoring for camera
+        try {
+            if ('permissions' in navigator) {
+                const cameraPermission = await navigator.permissions.query({ name: 'camera' });
+                cameraPermission.onchange = () => {
+                    if (cameraPermission.state === 'denied') {
+                        console.warn('Camera permission revoked');
+                        this.handleCameraPermissionRevoked();
+                    } else if (cameraPermission.state === 'granted' && !this.stream) {
+                        console.log('Camera permission re-granted');
+                        UIHelpers.showToast('Camera permission granted', 'success', 'videocam');
+                    }
+                };
+            }
+        } catch (error) {
+            console.warn('Could not set up camera permission monitoring:', error);
+        }
+
         this.stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.video.srcObject = this.stream;
 
@@ -731,6 +749,30 @@ class PoliCameraApp {
         }
 
         return true;
+    }
+
+    /**
+     * Handle camera permission being revoked
+     */
+    handleCameraPermissionRevoked() {
+        // Stop current stream
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+
+        // Stop detection
+        this.stopRealTimeDetection();
+
+        // Hide camera controls
+        this.captureFab.style.display = 'none';
+        this.cameraSwitchFab.style.display = 'none';
+
+        // Reset start button
+        this.resetStartFab();
+
+        // Show error message
+        UIHelpers.showError('Camera permission was revoked. Please allow camera access and refresh.');
     }
 
     /**
@@ -1686,6 +1728,8 @@ class PoliCameraApp {
     async runDetectionFrame() {
         if (!this.isDetectionRunning || !this.video || !this.detectionOverlay) return;
 
+        const frameStart = performance.now();
+
         try {
             // Skip if video not ready
             if (this.video.readyState < 2) return;
@@ -1713,6 +1757,17 @@ class PoliCameraApp {
 
             // Predict depth if enabled
             if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
+                // Dispose previous depth map before creating new one
+                if (this.currentDepthMap && this.currentDepthMap !== depthPredictionManager.lastDepthMap) {
+                    try {
+                        if (this.currentDepthMap.dispose) {
+                            this.currentDepthMap.dispose();
+                        }
+                    } catch (e) {
+                        // Ignore disposal errors
+                    }
+                }
+
                 // Note: predictDepth handles internal tensor disposal
                 this.currentDepthMap = await depthPredictionManager.predictDepth(this.video, true);
                 this.updateDepthFPS();
@@ -1724,9 +1779,15 @@ class PoliCameraApp {
             } else {
                 // Dispose depth map when disabling depth prediction
                 if (this.currentDepthMap) {
-                    this.currentDepthMap.dispose();
+                    try {
+                        if (this.currentDepthMap.dispose) {
+                            this.currentDepthMap.dispose();
+                        }
+                    } catch (e) {
+                        // Ignore disposal errors
+                    }
+                    this.currentDepthMap = null;
                 }
-                this.currentDepthMap = null;
             }
 
             // Only draw if we got results (frame wasn't skipped for performance)
@@ -1739,6 +1800,12 @@ class PoliCameraApp {
                     console.log('Sample detection:', detections[0]);
                     this.hasLoggedFirstDetection = true;
                 }
+            }
+
+            // Performance monitoring - warn if frame is slow
+            const frameTime = performance.now() - frameStart;
+            if (frameTime > AppConstants.TIMING.TARGET_FRAME_TIME * 2) {
+                console.warn(`Slow detection frame: ${frameTime.toFixed(1)}ms (target: ${AppConstants.TIMING.TARGET_FRAME_TIME}ms)`);
             }
 
         } catch (error) {

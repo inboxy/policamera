@@ -1,0 +1,51 @@
+{
+  "name": "policamera",
+  "version": "1.0.0",
+  "description": "Progressive Web App for professional camera with AI detection, GPS tracking, and depth estimation",
+  "main": "app.js",
+  "scripts": {
+    "dev": "python -m http.server 8000",
+    "lint": "eslint *.js",
+    "format": "prettier --write \"**/*.{js,json,md,css,html}\"",
+    "test": "jest",
+    "build": "npm run lint && npm run format"
+  },
+  "keywords": [
+    "pwa",
+    "camera",
+    "gps",
+    "ai",
+    "object-detection",
+    "depth-estimation",
+    "tensorflow",
+    "transformers"
+  ],
+  "author": "PoliCamera Team",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.2",
+    "@tensorflow/tfjs": "^4.20.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.20.0",
+    "jsqr": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsdoc": "^48.2.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/inboxy/policamera.git"
+  },
+  "bugs": {
+    "url": "https://github.com/inboxy/policamera/issues"
+  },
+  "homepage": "https://github.com/inboxy/policamera#readme"
+}
