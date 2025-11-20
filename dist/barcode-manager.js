@@ -70,12 +70,16 @@ export class BarcodeManager {
             failedScans: 0,
             totalScanTime: 0,
         };
+        // Debug mode
+        this.debugMode = false;
         if (config) {
             this.config = { ...this.config, ...config };
         }
         if (subtitleConfig) {
             this.subtitleConfig = { ...this.subtitleConfig, ...subtitleConfig };
         }
+        // Initialize debug mode from config
+        this.debugMode = this.config.debugMode || false;
         // Calculate scan interval from target FPS
         this.scanInterval = 1000 / this.config.targetFPS;
     }
@@ -84,11 +88,15 @@ export class BarcodeManager {
      */
     async initialize() {
         if (this.isInitialized) {
-            console.log('📱 BarcodeManager already initialized');
+            if (this.debugMode) {
+                console.log('📱 BarcodeManager already initialized');
+            }
             return true;
         }
         try {
-            console.log('📱 Initializing BarcodeManager...');
+            if (this.debugMode) {
+                console.log('📱 Initializing BarcodeManager...');
+            }
             // Create ZXing reader with hints
             const hints = new Map();
             // Set formats if specified
@@ -105,7 +113,9 @@ export class BarcodeManager {
             // Create modal UI
             this.createModal();
             this.isInitialized = true;
-            console.log('✅ BarcodeManager initialized successfully');
+            if (this.debugMode) {
+                console.log('✅ BarcodeManager initialized successfully');
+            }
             return true;
         }
         catch (error) {
@@ -122,12 +132,16 @@ export class BarcodeManager {
         }
         this.isEnabled = !this.isEnabled;
         if (this.isEnabled) {
-            console.log('📱 Barcode scanning enabled');
+            if (this.debugMode) {
+                console.log('📱 Barcode scanning enabled');
+            }
             // Show scanning indicator
             this.showScanningIndicator();
         }
         else {
-            console.log('📱 Barcode scanning disabled');
+            if (this.debugMode) {
+                console.log('📱 Barcode scanning disabled');
+            }
             this.hideSubtitle();
         }
         return this.isEnabled;
@@ -191,14 +205,18 @@ export class BarcodeManager {
             if (barcodeResult.text.length > 0) {
                 this.updateSubtitleText(barcodeResult);
             }
-            console.log(`📱 Barcode detected [${barcodeResult.format}]: ${barcodeResult.text.substring(0, 50)}${barcodeResult.text.length > 50 ? '...' : ''}`);
+            if (this.debugMode) {
+                console.log(`📱 Barcode detected [${barcodeResult.format}]: ${barcodeResult.text.substring(0, 50)}${barcodeResult.text.length > 50 ? '...' : ''}`);
+            }
             return barcodeResult;
         }
         catch (error) {
             // NotFoundException is expected when no barcode is found
             if (!(error instanceof ZXing.NotFoundException)) {
                 this.metrics.failedScans++;
-                console.warn('⚠️ Barcode scan error:', error);
+                if (this.debugMode) {
+                    console.warn('⚠️ Barcode scan error:', error);
+                }
             }
             return null;
         }
@@ -271,7 +289,9 @@ export class BarcodeManager {
     stopScanning() {
         if (this.reader) {
             this.reader.reset();
-            console.log('📱 Barcode scanning stopped');
+            if (this.debugMode) {
+                console.log('📱 Barcode scanning stopped');
+            }
         }
     }
     /**
@@ -694,7 +714,9 @@ export class BarcodeManager {
         this.resultHistory = [];
         this.currentResult = null;
         this.clearHistoryFromStorage();
-        console.log('📱 Barcode history cleared');
+        if (this.debugMode) {
+            console.log('📱 Barcode history cleared');
+        }
     }
     /**
      * Export history to JSON format
@@ -752,7 +774,9 @@ export class BarcodeManager {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            console.log('📥 Barcode history downloaded');
+            if (this.debugMode) {
+                console.log('📥 Barcode history downloaded');
+            }
         }
         catch (error) {
             console.error('Failed to download history:', error);
@@ -768,7 +792,9 @@ export class BarcodeManager {
      */
     setPersistence(enabled) {
         this.persistenceEnabled = enabled;
-        console.log(`📱 Barcode history persistence ${enabled ? 'enabled' : 'disabled'}`);
+        if (this.debugMode) {
+            console.log(`📱 Barcode history persistence ${enabled ? 'enabled' : 'disabled'}`);
+        }
         if (enabled) {
             // Load existing history
             this.loadHistoryFromStorage();
@@ -793,11 +819,15 @@ export class BarcodeManager {
             localStorage.setItem(this.storageKey, JSON.stringify(simplifiedHistory));
         }
         catch (error) {
-            console.warn('Failed to save barcode history to storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to save barcode history to storage:', error);
+            }
             // Disable persistence if storage is full
             if (error instanceof Error && error.name === 'QuotaExceededError') {
                 this.persistenceEnabled = false;
-                console.warn('Storage quota exceeded - persistence disabled');
+                if (this.debugMode) {
+                    console.warn('Storage quota exceeded - persistence disabled');
+                }
             }
         }
     }
@@ -816,11 +846,15 @@ export class BarcodeManager {
             // Validate and restore history
             if (Array.isArray(history)) {
                 this.resultHistory = history.slice(-this.maxHistorySize);
-                console.log(`📱 Loaded ${this.resultHistory.length} barcode results from storage`);
+                if (this.debugMode) {
+                    console.log(`📱 Loaded ${this.resultHistory.length} barcode results from storage`);
+                }
             }
         }
         catch (error) {
-            console.warn('Failed to load barcode history from storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to load barcode history from storage:', error);
+            }
         }
     }
     /**
@@ -829,10 +863,14 @@ export class BarcodeManager {
     clearHistoryFromStorage() {
         try {
             localStorage.removeItem(this.storageKey);
-            console.log('📱 Barcode history cleared from storage');
+            if (this.debugMode) {
+                console.log('📱 Barcode history cleared from storage');
+            }
         }
         catch (error) {
-            console.warn('Failed to clear storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to clear storage:', error);
+            }
         }
     }
     /**

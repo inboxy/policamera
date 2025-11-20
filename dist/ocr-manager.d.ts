@@ -7,6 +7,7 @@ export interface OCRConfig {
     targetFPS: number;
     minConfidence: number;
     debounceTime: number;
+    debugMode?: boolean;
 }
 export interface OCRResult {
     text: string;
@@ -78,6 +79,7 @@ export declare class OCRManager {
     private overlayEnabled;
     private overlayTimeout;
     private displayResult;
+    private debugMode;
     constructor(config?: Partial<OCRConfig>, subtitleConfig?: Partial<SubtitleBarConfig>);
     /**
      * Initialize Tesseract worker
