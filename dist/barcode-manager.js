@@ -30,6 +30,8 @@ export class BarcodeManager {
         // UI Elements
         this.subtitleBar = null;
         this.fadeTimeout = null;
+        this.modal = null;
+        this.modalTimeout = null;
         // Scanning state
         this.lastScanTime = 0;
         this.currentResult = null;
@@ -96,6 +98,8 @@ export class BarcodeManager {
             this.reader = new ZXing.BrowserMultiFormatReader(hints);
             // Create subtitle bar UI
             this.createSubtitleBar();
+            // Create modal UI
+            this.createModal();
             this.isInitialized = true;
             console.log('✅ BarcodeManager initialized successfully');
             return true;
@@ -177,6 +181,8 @@ export class BarcodeManager {
             // Update current result and history
             this.currentResult = barcodeResult;
             this.addToHistory(barcodeResult);
+            // Show modal popup with barcode info
+            this.showModal(barcodeResult);
             // Update subtitle display
             if (barcodeResult.text.length > 0) {
                 this.updateSubtitleText(barcodeResult);
@@ -237,6 +243,8 @@ export class BarcodeManager {
                     };
                     this.currentResult = barcodeResult;
                     this.addToHistory(barcodeResult);
+                    // Show modal popup with barcode info
+                    this.showModal(barcodeResult);
                     this.updateSubtitleText(barcodeResult);
                     this.metrics.successfulScans++;
                     callback(barcodeResult);
@@ -293,6 +301,99 @@ export class BarcodeManager {
             word-break: break-word;
         `;
         document.body.appendChild(this.subtitleBar);
+    }
+    /**
+     * Create modal for displaying barcode information
+     */
+    createModal() {
+        // Remove existing modal if present
+        const existing = document.getElementById('barcode-modal');
+        if (existing) {
+            existing.remove();
+        }
+        this.modal = document.createElement('div');
+        this.modal.id = 'barcode-modal';
+        this.modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            background: linear-gradient(135deg, rgba(20, 21, 20, 0.98) 0%, rgba(30, 31, 30, 0.98) 100%);
+            border: 2px solid ${this.subtitleConfig.backgroundColor === 'rgba(0, 0, 0, 0.85)' ? '#B4F222' : this.subtitleConfig.textColor};
+            border-radius: 16px;
+            padding: 24px 32px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            color: ${this.subtitleConfig.textColor};
+            z-index: 10003;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(180, 242, 34, 0.2);
+            backdrop-filter: blur(10px);
+            min-width: 320px;
+            max-width: 80vw;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: none;
+        `;
+        document.body.appendChild(this.modal);
+    }
+    /**
+     * Show modal with barcode result for 2 seconds
+     */
+    showModal(result) {
+        if (!this.modal)
+            return;
+        // Clear any existing timeout
+        if (this.modalTimeout) {
+            window.clearTimeout(this.modalTimeout);
+        }
+        // Get format icon and color
+        const formatIcon = this.getFormatIcon(result.format);
+        const accentColor = '#B4F222';
+        // Escape HTML to prevent XSS
+        const safeText = this.escapeHtml(result.text);
+        // Truncate very long text for display
+        const displayText = result.text.length > 200 ? safeText.substring(0, 200) + '...' : safeText;
+        // Create modal content
+        this.modal.innerHTML = `
+            <div style="text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px;">${formatIcon}</div>
+                <div style="font-size: 14px; font-weight: 700; letter-spacing: 1px; color: ${accentColor}; margin-bottom: 12px; text-transform: uppercase;">
+                    ${result.format}
+                </div>
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px; word-break: break-word; line-height: 1.4;">
+                    ${displayText}
+                </div>
+                <div style="font-size: 12px; opacity: 0.6; margin-top: 16px;">
+                    Scanned at ${new Date(result.timestamp).toLocaleTimeString()}
+                </div>
+            </div>
+        `;
+        // Show modal with animation
+        this.modal.style.display = 'block';
+        requestAnimationFrame(() => {
+            if (this.modal) {
+                this.modal.style.opacity = '1';
+                this.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+            }
+        });
+        // Auto-hide after 2 seconds
+        this.modalTimeout = window.setTimeout(() => {
+            this.hideModal();
+        }, 2000);
+    }
+    /**
+     * Hide the modal
+     */
+    hideModal() {
+        if (this.modal) {
+            this.modal.style.opacity = '0';
+            this.modal.style.transform = 'translate(-50%, -50%) scale(0.8)';
+            setTimeout(() => {
+                if (this.modal) {
+                    this.modal.style.display = 'none';
+                }
+            }, 300);
+        }
     }
     /**
      * Update subtitle text with barcode result
@@ -601,6 +702,16 @@ export class BarcodeManager {
         if (this.fadeTimeout) {
             window.clearTimeout(this.fadeTimeout);
             this.fadeTimeout = null;
+        }
+        // Clear modal timeout
+        if (this.modalTimeout) {
+            window.clearTimeout(this.modalTimeout);
+            this.modalTimeout = null;
+        }
+        // Remove modal
+        if (this.modal) {
+            this.modal.remove();
+            this.modal = null;
         }
         // Clear results
         this.clearHistory();
