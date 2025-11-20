@@ -15,6 +15,7 @@ export interface OCRConfig {
     targetFPS: number;
     minConfidence: number;
     debounceTime: number;
+    debugMode?: boolean;
 }
 
 export interface OCRResult {
@@ -95,6 +96,7 @@ export class OCRManager {
     private overlayEnabled: boolean = true;
     private overlayTimeout: number | null = null;
     private displayResult: OCRResult | null = null; // Result to display on overlay
+    private debugMode: boolean = false; // Control console logging for performance
 
     constructor(
         config: Partial<OCRConfig> = {},
@@ -105,9 +107,11 @@ export class OCRManager {
             targetFPS: config.targetFPS || 1, // 1 FPS for OCR (it's slow)
             minConfidence: config.minConfidence || 60,
             debounceTime: config.debounceTime || 1000,
+            debugMode: config.debugMode || false,
             ...config,
         };
 
+        this.debugMode = this.config.debugMode || false;
         this.targetFrameTime = 1000 / this.config.targetFPS;
 
         this.subtitleConfig = {
@@ -127,17 +131,21 @@ export class OCRManager {
      */
     async initialize(): Promise<boolean> {
         if (this.isInitialized) {
-            console.log('OCR Manager already initialized');
+            if (this.debugMode) {
+                console.log('OCR Manager already initialized');
+            }
             return true;
         }
 
         try {
-            console.log('🔤 Initializing Tesseract OCR worker...');
-            console.log(`Language: ${this.config.language}`);
+            if (this.debugMode) {
+                console.log('🔤 Initializing Tesseract OCR worker...');
+                console.log(`Language: ${this.config.language}`);
+            }
 
             this.worker = await Tesseract.createWorker(this.config.language, 1, {
                 logger: (m: any) => {
-                    if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract') {
+                    if (this.debugMode && (m.status === 'loading tesseract core' || m.status === 'initializing tesseract')) {
                         console.log(`📥 OCR: ${m.status}... ${Math.round((m.progress || 0) * 100)}%`);
                     }
                 },
@@ -147,7 +155,9 @@ export class OCRManager {
             this.createSubtitleBar();
 
             this.isInitialized = true;
-            console.log('✅ OCR Manager initialized');
+            if (this.debugMode) {
+                console.log('✅ OCR Manager initialized');
+            }
             return true;
         } catch (error) {
             console.error('❌ Failed to initialize OCR:', error);
@@ -190,7 +200,9 @@ export class OCRManager {
         `;
 
         document.body.appendChild(this.subtitleBar);
-        console.log('✅ OCR subtitle bar created');
+        if (this.debugMode) {
+            console.log('✅ OCR subtitle bar created');
+        }
     }
 
     /**
@@ -208,10 +220,14 @@ export class OCRManager {
 
         if (this.isEnabled) {
             this.showSubtitleBar();
-            console.log('🔤 OCR enabled');
+            if (this.debugMode) {
+                console.log('🔤 OCR enabled');
+            }
         } else {
             this.hideSubtitleBar();
-            console.log('🔤 OCR disabled');
+            if (this.debugMode) {
+                console.log('🔤 OCR disabled');
+            }
         }
 
         return this.isEnabled;
@@ -263,24 +279,30 @@ export class OCRManager {
             };
 
             // Log detection details for debugging
-            console.log(`📝 OCR detected ${ocrResult.words.length} words, overall confidence: ${ocrResult.confidence.toFixed(1)}%`);
-            if (ocrResult.words.length > 0 && ocrResult.words[0]) {
-                console.log(`   First word: "${ocrResult.words[0].text}" at confidence ${ocrResult.words[0].confidence.toFixed(1)}%`);
-                console.log(`   Bbox:`, ocrResult.words[0].bbox);
+            if (this.debugMode) {
+                console.log(`📝 OCR detected ${ocrResult.words.length} words, overall confidence: ${ocrResult.confidence.toFixed(1)}%`);
+                if (ocrResult.words.length > 0 && ocrResult.words[0]) {
+                    console.log(`   First word: "${ocrResult.words[0].text}" at confidence ${ocrResult.words[0].confidence.toFixed(1)}%`);
+                    console.log(`   Bbox:`, ocrResult.words[0].bbox);
+                }
             }
 
             // Filter words by confidence (not overall result)
             const highConfidenceWords = ocrResult.words.filter(word => word.confidence >= this.config.minConfidence);
 
             if (highConfidenceWords.length === 0) {
-                console.log(`OCR: No words above ${this.config.minConfidence}% confidence threshold`);
+                if (this.debugMode) {
+                    console.log(`OCR: No words above ${this.config.minConfidence}% confidence threshold`);
+                }
                 this.isProcessing = false;
                 return null;
             }
 
             // Update the result to only include high-confidence words
             ocrResult.words = highConfidenceWords;
-            console.log(`📝 OCR: Showing ${highConfidenceWords.length} words above confidence threshold`);
+            if (this.debugMode) {
+                console.log(`📝 OCR: Showing ${highConfidenceWords.length} words above confidence threshold`);
+            }
 
             // Update metrics
             const processTime = performance.now() - processStart;
@@ -309,10 +331,14 @@ export class OCRManager {
             }
             this.overlayTimeout = window.setTimeout(() => {
                 this.displayResult = null;
-                console.log('🔤 OCR overlay cleared after 2 seconds');
+                if (this.debugMode) {
+                    console.log('🔤 OCR overlay cleared after 2 seconds');
+                }
             }, 2000);
 
-            console.log(`📝 OCR complete: "${ocrResult.text.substring(0, 50)}${ocrResult.text.length > 50 ? '...' : ''}" (${ocrResult.confidence.toFixed(1)}% confidence, ${processTime.toFixed(0)}ms, ${highConfidenceWords.length} words)`);
+            if (this.debugMode) {
+                console.log(`📝 OCR complete: "${ocrResult.text.substring(0, 50)}${ocrResult.text.length > 50 ? '...' : ''}" (${ocrResult.confidence.toFixed(1)}% confidence, ${processTime.toFixed(0)}ms, ${highConfidenceWords.length} words)`);
+            }
 
             this.isProcessing = false;
             return ocrResult;
@@ -453,17 +479,23 @@ export class OCRManager {
      */
     drawTextOverlay(result: OCRResult, videoElement: HTMLVideoElement): void {
         if (!this.overlayCanvas || !this.overlayEnabled || !result.words || result.words.length === 0) {
-            console.log('🔤 OCR overlay skipped: canvas=', !!this.overlayCanvas, 'enabled=', this.overlayEnabled, 'words=', result.words?.length);
+            if (this.debugMode) {
+                console.log('🔤 OCR overlay skipped: canvas=', !!this.overlayCanvas, 'enabled=', this.overlayEnabled, 'words=', result.words?.length);
+            }
             return;
         }
 
         const ctx = this.overlayCanvas.getContext('2d');
         if (!ctx) {
-            console.log('🔤 OCR overlay skipped: no canvas context');
+            if (this.debugMode) {
+                console.log('🔤 OCR overlay skipped: no canvas context');
+            }
             return;
         }
 
-        console.log(`🔤 Drawing OCR overlay for ${result.words.length} words on canvas ${this.overlayCanvas.width}x${this.overlayCanvas.height}`);
+        if (this.debugMode) {
+            console.log(`🔤 Drawing OCR overlay for ${result.words.length} words on canvas ${this.overlayCanvas.width}x${this.overlayCanvas.height}`);
+        }
 
         // Calculate scale factors between video and canvas
         const scaleX = this.overlayCanvas.width / videoElement.videoWidth;

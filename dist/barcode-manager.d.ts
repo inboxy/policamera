@@ -8,6 +8,7 @@ export interface BarcodeConfig {
     formats?: any[];
     tryHarder?: boolean;
     enabledFormats?: string[];
+    debugMode?: boolean;
 }
 export interface SubtitleBarConfig {
     position: 'top' | 'bottom';
@@ -79,6 +80,7 @@ export declare class BarcodeManager {
      */
     private persistenceEnabled;
     private metrics;
+    private debugMode;
     /**
      * Constructor
      */
