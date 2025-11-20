@@ -262,12 +262,25 @@ export class OCRManager {
                 })),
             };
 
-            // Filter by confidence
-            if (ocrResult.confidence < this.config.minConfidence) {
-                console.log(`OCR confidence too low: ${ocrResult.confidence.toFixed(1)}%`);
+            // Log detection details for debugging
+            console.log(`📝 OCR detected ${ocrResult.words.length} words, overall confidence: ${ocrResult.confidence.toFixed(1)}%`);
+            if (ocrResult.words.length > 0 && ocrResult.words[0]) {
+                console.log(`   First word: "${ocrResult.words[0].text}" at confidence ${ocrResult.words[0].confidence.toFixed(1)}%`);
+                console.log(`   Bbox:`, ocrResult.words[0].bbox);
+            }
+
+            // Filter words by confidence (not overall result)
+            const highConfidenceWords = ocrResult.words.filter(word => word.confidence >= this.config.minConfidence);
+
+            if (highConfidenceWords.length === 0) {
+                console.log(`OCR: No words above ${this.config.minConfidence}% confidence threshold`);
                 this.isProcessing = false;
                 return null;
             }
+
+            // Update the result to only include high-confidence words
+            ocrResult.words = highConfidenceWords;
+            console.log(`📝 OCR: Showing ${highConfidenceWords.length} words above confidence threshold`);
 
             // Update metrics
             const processTime = performance.now() - processStart;
@@ -281,9 +294,13 @@ export class OCRManager {
             // Store result for display (will be shown for 2 seconds)
             this.displayResult = ocrResult;
 
-            // Update subtitle display
+            // Update subtitle display (show even if text is empty to provide feedback)
             if (ocrResult.text.length > 0) {
                 this.updateSubtitleText(ocrResult.text, ocrResult.confidence);
+            } else if (highConfidenceWords.length > 0) {
+                // If we have words but no combined text, show the words
+                const wordsText = highConfidenceWords.map(w => w.text).join(' ');
+                this.updateSubtitleText(wordsText, ocrResult.confidence);
             }
 
             // Auto-clear display result after 2 seconds
@@ -292,9 +309,10 @@ export class OCRManager {
             }
             this.overlayTimeout = window.setTimeout(() => {
                 this.displayResult = null;
+                console.log('🔤 OCR overlay cleared after 2 seconds');
             }, 2000);
 
-            console.log(`📝 OCR: "${ocrResult.text}" (${ocrResult.confidence.toFixed(1)}% confidence, ${processTime.toFixed(0)}ms)`);
+            console.log(`📝 OCR complete: "${ocrResult.text.substring(0, 50)}${ocrResult.text.length > 50 ? '...' : ''}" (${ocrResult.confidence.toFixed(1)}% confidence, ${processTime.toFixed(0)}ms, ${highConfidenceWords.length} words)`);
 
             this.isProcessing = false;
             return ocrResult;
@@ -435,30 +453,56 @@ export class OCRManager {
      */
     drawTextOverlay(result: OCRResult, videoElement: HTMLVideoElement): void {
         if (!this.overlayCanvas || !this.overlayEnabled || !result.words || result.words.length === 0) {
+            console.log('🔤 OCR overlay skipped: canvas=', !!this.overlayCanvas, 'enabled=', this.overlayEnabled, 'words=', result.words?.length);
             return;
         }
 
         const ctx = this.overlayCanvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) {
+            console.log('🔤 OCR overlay skipped: no canvas context');
+            return;
+        }
+
+        console.log(`🔤 Drawing OCR overlay for ${result.words.length} words on canvas ${this.overlayCanvas.width}x${this.overlayCanvas.height}`);
 
         // Calculate scale factors between video and canvas
         const scaleX = this.overlayCanvas.width / videoElement.videoWidth;
         const scaleY = this.overlayCanvas.height / videoElement.videoHeight;
 
+        console.log(`🔤 Scale factors: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
+
+        let wordsDrawn = 0;
+
         // Draw each word with its bounding box
-        result.words.forEach((word) => {
-            // Skip low confidence words
+        result.words.forEach((word, index) => {
+            // Skip low confidence words (already filtered, but double check)
             if (word.confidence < this.config.minConfidence) {
                 return;
             }
 
             const bbox = word.bbox;
 
+            // Validate bbox structure
+            if (!bbox || typeof bbox.x0 !== 'number' || typeof bbox.y0 !== 'number') {
+                console.warn(`⚠️ Invalid bbox for word "${word.text}":`, bbox);
+                return;
+            }
+
             // Scale bounding box coordinates to canvas size
             const x = bbox.x0 * scaleX;
             const y = bbox.y0 * scaleY;
             const width = (bbox.x1 - bbox.x0) * scaleX;
             const height = (bbox.y1 - bbox.y0) * scaleY;
+
+            if (index === 0) {
+                console.log(`🔤 First word "${word.text}": bbox[${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}] -> canvas[${x.toFixed(0)},${y.toFixed(0)},${width.toFixed(0)}x${height.toFixed(0)}]`);
+            }
+
+            // Skip if box is too small or invalid
+            if (!this.overlayCanvas || width < 5 || height < 5 || width > this.overlayCanvas.width || height > this.overlayCanvas.height) {
+                console.warn(`⚠️ Invalid box size for "${word.text}": ${width}x${height}`);
+                return;
+            }
 
             // Draw bounding box with confidence-based color
             const confidence = word.confidence;
@@ -471,15 +515,17 @@ export class OCRManager {
                 strokeColor = '#FF8800'; // Orange for lower confidence
             }
 
-            // Draw box
+            // Draw box with glow effect
+            ctx.shadowColor = strokeColor;
+            ctx.shadowBlur = 8;
             ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.strokeRect(x, y, width, height);
+            ctx.shadowBlur = 0;
 
-            // Draw semi-transparent background for text
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            const textPadding = 4;
-            const fontSize = Math.max(12, height * 0.5);
+            // Draw semi-transparent background for text label
+            const textPadding = 6;
+            const fontSize = Math.max(14, Math.min(24, height * 0.8));
             ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
             // Measure text width
@@ -487,14 +533,30 @@ export class OCRManager {
             const textWidth = textMetrics.width;
             const textHeight = fontSize;
 
-            // Draw background for text (above the box)
-            const textY = Math.max(textHeight + textPadding * 2, y - textPadding);
-            ctx.fillRect(x - textPadding, textY - textHeight - textPadding, textWidth + textPadding * 2, textHeight + textPadding * 2);
+            // Position label above the box
+            const labelX = x;
+            const labelY = Math.max(textHeight + textPadding * 2, y - 4);
+
+            // Draw background for text with gradient
+            const gradient = ctx.createLinearGradient(labelX, labelY - textHeight - textPadding, labelX, labelY);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+            gradient.addColorStop(1, 'rgba(20, 20, 20, 0.95)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(labelX - textPadding, labelY - textHeight - textPadding, textWidth + textPadding * 2, textHeight + textPadding * 2);
+
+            // Draw text label border
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(labelX - textPadding, labelY - textHeight - textPadding, textWidth + textPadding * 2, textHeight + textPadding * 2);
 
             // Draw text
-            ctx.fillStyle = strokeColor;
-            ctx.fillText(word.text, x, textY - textPadding);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(word.text, labelX, labelY - textPadding);
+
+            wordsDrawn++;
         });
+
+        console.log(`✅ OCR overlay complete: drew ${wordsDrawn} words`);
     }
 
     /**
