@@ -501,7 +501,9 @@ export class OCRManager {
         const scaleX = this.overlayCanvas.width / videoElement.videoWidth;
         const scaleY = this.overlayCanvas.height / videoElement.videoHeight;
 
-        console.log(`🔤 Scale factors: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
+        if (this.debugMode) {
+            console.log(`🔤 Scale factors: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
+        }
 
         let wordsDrawn = 0;
 
@@ -516,7 +518,9 @@ export class OCRManager {
 
             // Validate bbox structure
             if (!bbox || typeof bbox.x0 !== 'number' || typeof bbox.y0 !== 'number') {
-                console.warn(`⚠️ Invalid bbox for word "${word.text}":`, bbox);
+                if (this.debugMode) {
+                    console.warn(`⚠️ Invalid bbox for word "${word.text}":`, bbox);
+                }
                 return;
             }
 
@@ -526,13 +530,15 @@ export class OCRManager {
             const width = (bbox.x1 - bbox.x0) * scaleX;
             const height = (bbox.y1 - bbox.y0) * scaleY;
 
-            if (index === 0) {
+            if (index === 0 && this.debugMode) {
                 console.log(`🔤 First word "${word.text}": bbox[${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}] -> canvas[${x.toFixed(0)},${y.toFixed(0)},${width.toFixed(0)}x${height.toFixed(0)}]`);
             }
 
             // Skip if box is too small or invalid
             if (!this.overlayCanvas || width < 5 || height < 5 || width > this.overlayCanvas.width || height > this.overlayCanvas.height) {
-                console.warn(`⚠️ Invalid box size for "${word.text}": ${width}x${height}`);
+                if (this.debugMode) {
+                    console.warn(`⚠️ Invalid box size for "${word.text}": ${width}x${height}`);
+                }
                 return;
             }
 
@@ -588,7 +594,9 @@ export class OCRManager {
             wordsDrawn++;
         });
 
-        console.log(`✅ OCR overlay complete: drew ${wordsDrawn} words`);
+        if (this.debugMode) {
+            console.log(`✅ OCR overlay complete: drew ${wordsDrawn} words`);
+        }
     }
 
     /**
@@ -649,11 +657,15 @@ export class OCRManager {
         }
 
         try {
-            console.log(`🔤 Changing OCR language to: ${language}`);
+            if (this.debugMode) {
+                console.log(`🔤 Changing OCR language to: ${language}`);
+            }
             await (this.worker as any).loadLanguage(language);
             await (this.worker as any).initialize(language);
             this.config.language = language;
-            console.log('✅ OCR language changed');
+            if (this.debugMode) {
+                console.log('✅ OCR language changed');
+            }
             return true;
         } catch (error) {
             console.error('Failed to change OCR language:', error);
@@ -724,7 +736,9 @@ export class OCRManager {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            console.log('📥 OCR history downloaded');
+            if (this.debugMode) {
+                console.log('📥 OCR history downloaded');
+            }
         } catch (error) {
             console.error('Failed to download OCR history:', error);
         }
@@ -740,7 +754,9 @@ export class OCRManager {
      */
     setPersistence(enabled: boolean): void {
         this.persistenceEnabled = enabled;
-        console.log(`🔤 OCR history persistence ${enabled ? 'enabled' : 'disabled'}`);
+        if (this.debugMode) {
+            console.log(`🔤 OCR history persistence ${enabled ? 'enabled' : 'disabled'}`);
+        }
 
         if (enabled) {
             // Load existing history
@@ -760,11 +776,15 @@ export class OCRManager {
         try {
             localStorage.setItem(this.storageKey, JSON.stringify(this.resultHistory));
         } catch (error) {
-            console.warn('Failed to save OCR history to storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to save OCR history to storage:', error);
+            }
             // Disable persistence if storage is full
             if (error instanceof Error && error.name === 'QuotaExceededError') {
                 this.persistenceEnabled = false;
-                console.warn('Storage quota exceeded - OCR persistence disabled');
+                if (this.debugMode) {
+                    console.warn('Storage quota exceeded - OCR persistence disabled');
+                }
             }
         }
     }
@@ -784,10 +804,14 @@ export class OCRManager {
             // Validate and restore history
             if (Array.isArray(history)) {
                 this.resultHistory = history.slice(-this.maxHistorySize);
-                console.log(`🔤 Loaded ${this.resultHistory.length} OCR results from storage`);
+                if (this.debugMode) {
+                    console.log(`🔤 Loaded ${this.resultHistory.length} OCR results from storage`);
+                }
             }
         } catch (error) {
-            console.warn('Failed to load OCR history from storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to load OCR history from storage:', error);
+            }
         }
     }
 
@@ -798,7 +822,9 @@ export class OCRManager {
         this.resultHistory = [];
         this.currentResult = null;
         this.clearHistoryFromStorage();
-        console.log('🔤 OCR history cleared');
+        if (this.debugMode) {
+            console.log('🔤 OCR history cleared');
+        }
     }
 
     /**
@@ -807,9 +833,13 @@ export class OCRManager {
     private clearHistoryFromStorage(): void {
         try {
             localStorage.removeItem(this.storageKey);
-            console.log('🔤 OCR history cleared from storage');
+            if (this.debugMode) {
+                console.log('🔤 OCR history cleared from storage');
+            }
         } catch (error) {
-            console.warn('Failed to clear OCR storage:', error);
+            if (this.debugMode) {
+                console.warn('Failed to clear OCR storage:', error);
+            }
         }
     }
 
@@ -817,7 +847,9 @@ export class OCRManager {
      * Cleanup resources
      */
     async cleanup(): Promise<void> {
-        console.log('🧹 Cleaning up OCR resources...');
+        if (this.debugMode) {
+            console.log('🧹 Cleaning up OCR resources...');
+        }
 
         this.isEnabled = false;
         this.isProcessing = false;
@@ -841,7 +873,9 @@ export class OCRManager {
         this.isInitialized = false;
         this.lastProcessTime = 0;
 
-        console.log('✅ OCR cleanup complete');
+        if (this.debugMode) {
+            console.log('✅ OCR cleanup complete');
+        }
     }
 }
 
