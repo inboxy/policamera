@@ -1098,10 +1098,20 @@ class PoliCameraApp {
             const isEnabled = await window.ocrManager.toggle();
             this.isOCREnabled = isEnabled;
 
+            // Set overlay canvas for drawing text bounding boxes
+            if (isEnabled && this.detectionOverlay) {
+                window.ocrManager.setOverlayCanvas(this.detectionOverlay);
+                window.ocrManager.setOverlayEnabled(true);
+            } else if (!isEnabled) {
+                // Clear overlay when disabled
+                window.ocrManager.clearOverlay();
+                window.ocrManager.setOverlayEnabled(false);
+            }
+
             // Update button styling
             if (isEnabled) {
                 this.ocrFab.classList.add('active');
-                this.showToast('OCR enabled - Text appears in subtitle', 'text_fields');
+                this.showToast('OCR enabled - Text shown on screen', 'text_fields');
             } else {
                 this.ocrFab.classList.remove('active');
                 this.showToast('OCR disabled', 'text_fields');
@@ -2257,6 +2267,14 @@ class PoliCameraApp {
         if (this.isFaceDetectionEnabled && this.currentFaces.length > 0 && window.faceDetectionManager) {
             const scale = { x: scaleX, y: scaleY };
             faceDetectionManager.drawFaces(ctx, this.currentFaces, scale);
+        }
+
+        // Draw OCR text overlay if enabled and results available
+        if (this.isOCREnabled && window.ocrManager) {
+            const currentResult = window.ocrManager.getCurrentResult();
+            if (currentResult && this.video) {
+                window.ocrManager.drawTextOverlay(currentResult, this.video);
+            }
         }
 
         // Draw detection statistics overlay

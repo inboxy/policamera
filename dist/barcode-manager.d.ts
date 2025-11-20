@@ -46,6 +46,8 @@ export declare class BarcodeManager {
     private subtitleConfig;
     private subtitleBar;
     private fadeTimeout;
+    private modal;
+    private modalTimeout;
     private lastScanTime;
     private scanInterval;
     private currentResult;
@@ -108,6 +110,18 @@ export declare class BarcodeManager {
      * Create subtitle bar UI element
      */
     private createSubtitleBar;
+    /**
+     * Create modal for displaying barcode information
+     */
+    private createModal;
+    /**
+     * Show modal with barcode result for 2 seconds
+     */
+    private showModal;
+    /**
+     * Hide the modal
+     */
+    private hideModal;
     /**
      * Update subtitle text with barcode result
      */

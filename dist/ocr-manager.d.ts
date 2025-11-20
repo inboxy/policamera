@@ -74,6 +74,8 @@ export declare class OCRManager {
     private fadeTimeout;
     private processCount;
     private totalProcessTime;
+    private overlayCanvas;
+    private overlayEnabled;
     constructor(config?: Partial<OCRConfig>, subtitleConfig?: Partial<SubtitleBarConfig>);
     /**
      * Initialize Tesseract worker
@@ -128,6 +130,24 @@ export declare class OCRManager {
      * Escape HTML to prevent XSS
      */
     private escapeHtml;
+    /**
+     * Set the canvas overlay for drawing text bounding boxes
+     * This should be called from the main app to provide the detection overlay canvas
+     */
+    setOverlayCanvas(canvas: HTMLCanvasElement | null): void;
+    /**
+     * Enable or disable visual overlay of detected text
+     */
+    setOverlayEnabled(enabled: boolean): void;
+    /**
+     * Draw OCR results as overlays on the canvas
+     * Shows bounding boxes and text labels where text was detected
+     */
+    drawTextOverlay(result: OCRResult, videoElement: HTMLVideoElement): void;
+    /**
+     * Clear the overlay canvas
+     */
+    clearOverlay(): void;
     /**
      * Get recognition history
      */

@@ -90,6 +90,10 @@ export class OCRManager {
     private processCount: number = 0;
     private totalProcessTime: number = 0;
 
+    // Canvas overlay for drawing text bounding boxes
+    private overlayCanvas: HTMLCanvasElement | null = null;
+    private overlayEnabled: boolean = true;
+
     constructor(
         config: Partial<OCRConfig> = {},
         subtitleConfig: Partial<SubtitleBarConfig> = {}
@@ -395,6 +399,101 @@ export class OCRManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Set the canvas overlay for drawing text bounding boxes
+     * This should be called from the main app to provide the detection overlay canvas
+     */
+    setOverlayCanvas(canvas: HTMLCanvasElement | null): void {
+        this.overlayCanvas = canvas;
+    }
+
+    /**
+     * Enable or disable visual overlay of detected text
+     */
+    setOverlayEnabled(enabled: boolean): void {
+        this.overlayEnabled = enabled;
+    }
+
+    /**
+     * Draw OCR results as overlays on the canvas
+     * Shows bounding boxes and text labels where text was detected
+     */
+    drawTextOverlay(result: OCRResult, videoElement: HTMLVideoElement): void {
+        if (!this.overlayCanvas || !this.overlayEnabled || !result.words || result.words.length === 0) {
+            return;
+        }
+
+        const ctx = this.overlayCanvas.getContext('2d');
+        if (!ctx) return;
+
+        // Calculate scale factors between video and canvas
+        const scaleX = this.overlayCanvas.width / videoElement.videoWidth;
+        const scaleY = this.overlayCanvas.height / videoElement.videoHeight;
+
+        // Draw each word with its bounding box
+        result.words.forEach((word) => {
+            // Skip low confidence words
+            if (word.confidence < this.config.minConfidence) {
+                return;
+            }
+
+            const bbox = word.bbox;
+
+            // Scale bounding box coordinates to canvas size
+            const x = bbox.x0 * scaleX;
+            const y = bbox.y0 * scaleY;
+            const width = (bbox.x1 - bbox.x0) * scaleX;
+            const height = (bbox.y1 - bbox.y0) * scaleY;
+
+            // Draw bounding box with confidence-based color
+            const confidence = word.confidence;
+            let strokeColor: string;
+            if (confidence >= 90) {
+                strokeColor = '#00FF00'; // Green for high confidence
+            } else if (confidence >= 75) {
+                strokeColor = '#FFFF00'; // Yellow for medium confidence
+            } else {
+                strokeColor = '#FF8800'; // Orange for lower confidence
+            }
+
+            // Draw box
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+
+            // Draw semi-transparent background for text
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            const textPadding = 4;
+            const fontSize = Math.max(12, height * 0.5);
+            ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+            // Measure text width
+            const textMetrics = ctx.measureText(word.text);
+            const textWidth = textMetrics.width;
+            const textHeight = fontSize;
+
+            // Draw background for text (above the box)
+            const textY = Math.max(textHeight + textPadding * 2, y - textPadding);
+            ctx.fillRect(x - textPadding, textY - textHeight - textPadding, textWidth + textPadding * 2, textHeight + textPadding * 2);
+
+            // Draw text
+            ctx.fillStyle = strokeColor;
+            ctx.fillText(word.text, x, textY - textPadding);
+        });
+    }
+
+    /**
+     * Clear the overlay canvas
+     */
+    clearOverlay(): void {
+        if (!this.overlayCanvas) return;
+
+        const ctx = this.overlayCanvas.getContext('2d');
+        if (ctx) {
+            ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        }
     }
 
     /**
