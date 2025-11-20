@@ -184,12 +184,32 @@ export class BarcodeManager {
 
         if (this.isEnabled) {
             console.log('📱 Barcode scanning enabled');
+            // Show scanning indicator
+            this.showScanningIndicator();
         } else {
             console.log('📱 Barcode scanning disabled');
             this.hideSubtitle();
         }
 
         return this.isEnabled;
+    }
+
+    /**
+     * Show scanning indicator
+     */
+    private showScanningIndicator(): void {
+        if (!this.subtitleBar) return;
+
+        this.subtitleBar.innerHTML = `
+            <div style="display: flex; justify-content: center; align-items: center; gap: 12px;">
+                <span style="font-size: 20px;">📱</span>
+                <span style="font-weight: 600;">BARCODE SCANNER</span>
+                <span style="opacity: 0.8;">|</span>
+                <span style="opacity: 0.7;">Scanning...</span>
+            </div>
+        `;
+
+        this.subtitleBar.style.opacity = '1';
     }
 
     /**
@@ -262,6 +282,7 @@ export class BarcodeManager {
 
     /**
      * Scan continuously from video stream (polling-based)
+     * Uses canvas buffer to avoid interfering with video display
      * Returns interval ID that can be cleared with stopScanning()
      */
     startVideoScanning(
@@ -273,9 +294,33 @@ export class BarcodeManager {
             return -1;
         }
 
+        // Create an off-screen canvas for frame capture
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+            console.error('Failed to create canvas context for barcode scanning');
+            return -1;
+        }
+
         const scanInterval = window.setInterval(async () => {
             try {
-                const result = await this.reader!.decodeFromVideoElement(videoElement);
+                // Skip if video is not ready
+                if (videoElement.readyState !== videoElement.HAVE_ENOUGH_DATA) {
+                    return;
+                }
+
+                // Set canvas size to match video
+                if (canvas.width !== videoElement.videoWidth || canvas.height !== videoElement.videoHeight) {
+                    canvas.width = videoElement.videoWidth;
+                    canvas.height = videoElement.videoHeight;
+                }
+
+                // Capture current video frame to canvas
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+                // Scan from canvas instead of video element directly
+                const result = await this.reader!.decodeFromImageElement(canvas);
 
                 if (result) {
                     const barcodeResult: BarcodeResult = {
@@ -300,6 +345,10 @@ export class BarcodeManager {
                 this.metrics.scansPerformed++;
             } catch (error) {
                 // NotFoundException is expected when no barcode found
+                if (!(error instanceof ZXing.NotFoundException)) {
+                    // Only log unexpected errors
+                    console.debug('Barcode scan error:', error);
+                }
             }
         }, intervalMs);
 
@@ -340,7 +389,7 @@ export class BarcodeManager {
             font-size: ${this.subtitleConfig.fontSize}px;
             font-weight: 500;
             text-align: center;
-            z-index: 9997;
+            z-index: 10002;
             opacity: 0;
             transition: opacity 0.3s ease-in-out;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
