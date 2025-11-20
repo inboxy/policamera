@@ -49,6 +49,15 @@ class PoliCameraApp {
         this.contourUpdateInterval = AppConstants.CONTOUR.UPDATE_INTERVAL;
         this.currentFrameNumber = 0;
 
+        // Performance optimization for frame processing
+        this.performanceStats = {
+            recentFrameTimes: [], // Track last N frame times
+            maxSamples: 10,       // Number of frames to average
+            targetFrameTime: AppConstants.TIMING.TARGET_FRAME_TIME,
+            adaptiveSkipFrames: 0, // Dynamic frame skipping based on performance
+            detectionCycleCounter: 0 // Counter for staggering different detections
+        };
+
         // FPS tracking
         this.fpsFrameTimes = [];
         this.fpsLastUpdate = 0;
@@ -1924,6 +1933,36 @@ class PoliCameraApp {
         }, 2000);
     }
 
+    /**
+     * Update performance stats and adjust frame skipping adaptively
+     */
+    updatePerformanceStats(frameTime) {
+        const stats = this.performanceStats;
+
+        // Add frame time to recent samples
+        stats.recentFrameTimes.push(frameTime);
+        if (stats.recentFrameTimes.length > stats.maxSamples) {
+            stats.recentFrameTimes.shift();
+        }
+
+        // Calculate average frame time
+        const avgFrameTime = stats.recentFrameTimes.reduce((a, b) => a + b, 0) / stats.recentFrameTimes.length;
+
+        // Adaptive frame skipping based on performance
+        if (avgFrameTime > stats.targetFrameTime * 2) {
+            // Performance is poor, skip every other frame
+            stats.adaptiveSkipFrames = 1;
+        } else if (avgFrameTime > stats.targetFrameTime * 1.5) {
+            // Performance is marginal, skip occasionally
+            stats.adaptiveSkipFrames = 0; // Could be adjusted to skip less frequently
+        } else {
+            // Performance is good, process all frames
+            stats.adaptiveSkipFrames = 0;
+        }
+
+        return avgFrameTime;
+    }
+
     runDetectionLoop() {
         if (!this.isDetectionRunning) return;
 
@@ -1945,29 +1984,43 @@ class PoliCameraApp {
             // Skip if video not ready
             if (this.video.readyState < 2) return;
 
+            // Adaptive frame skipping - skip frames if performance is poor
+            const stats = this.performanceStats;
+            stats.detectionCycleCounter++;
+
+            if (stats.adaptiveSkipFrames > 0 && stats.detectionCycleCounter % (stats.adaptiveSkipFrames + 1) !== 0) {
+                // Skip this frame for performance
+                return;
+            }
+
             // Update overall FPS
             this.updateFPS();
 
             // Run optimized real-time detection directly on video element
+            // Object detection runs on every processed frame (primary feature)
             const detections = await aiRecognitionManager.detectObjects(this.video, true);
             this.updateDetectionFPS();
 
-            // Detect poses if enabled
-            if (this.isPoseEstimationEnabled && window.poseEstimationManager) {
+            // Stagger heavy detections across frames to distribute load
+            // This prevents all detections from running simultaneously
+            const cyclePosition = stats.detectionCycleCounter % 4;
+
+            // Detect poses if enabled (runs on frames 0, 4, 8, ...)
+            if (cyclePosition === 0 && this.isPoseEstimationEnabled && window.poseEstimationManager) {
                 this.currentPoses = await poseEstimationManager.detectPoses(this.video, true);
-            } else {
+            } else if (!this.isPoseEstimationEnabled) {
                 this.currentPoses = [];
             }
 
-            // Detect faces if enabled
-            if (this.isFaceDetectionEnabled && window.faceDetectionManager) {
+            // Detect faces if enabled (runs on frames 1, 5, 9, ...)
+            if (cyclePosition === 1 && this.isFaceDetectionEnabled && window.faceDetectionManager) {
                 this.currentFaces = await faceDetectionManager.detectFaces(this.video, true);
-            } else {
+            } else if (!this.isFaceDetectionEnabled) {
                 this.currentFaces = [];
             }
 
-            // Predict depth if enabled
-            if (this.isDepthPredictionEnabled && window.depthPredictionManager) {
+            // Predict depth if enabled (runs on frames 2, 6, 10, ...)
+            if (cyclePosition === 2 && this.isDepthPredictionEnabled && window.depthPredictionManager) {
                 // Dispose previous depth map before creating new one
                 if (this.currentDepthMap && this.currentDepthMap !== depthPredictionManager.lastDepthMap) {
                     try {
@@ -1991,7 +2044,7 @@ class PoliCameraApp {
                 if (this.currentDepthMap) {
                     await this.renderPipDepthView(this.currentDepthMap);
                 }
-            } else {
+            } else if (!this.isDepthPredictionEnabled) {
                 // Dispose depth map when disabling depth prediction
                 if (this.currentDepthMap) {
                     try {
@@ -2005,8 +2058,8 @@ class PoliCameraApp {
                 }
             }
 
-            // Run OCR if enabled
-            if (this.isOCREnabled && window.ocrManager) {
+            // Run OCR if enabled (runs on frames 3, 7, 11, ...)
+            if (cyclePosition === 3 && this.isOCREnabled && window.ocrManager) {
                 await window.ocrManager.recognizeText(this.video, true);
             }
 
@@ -2022,10 +2075,13 @@ class PoliCameraApp {
                 }
             }
 
-            // Performance monitoring - warn if frame is slow
+            // Performance monitoring and adaptive optimization
             const frameTime = performance.now() - frameStart;
-            if (frameTime > AppConstants.TIMING.TARGET_FRAME_TIME * 2) {
-                console.warn(`Slow detection frame: ${frameTime.toFixed(1)}ms (target: ${AppConstants.TIMING.TARGET_FRAME_TIME}ms)`);
+            const avgFrameTime = this.updatePerformanceStats(frameTime);
+
+            // Warn if frame is consistently slow (based on average, not single frame)
+            if (avgFrameTime > AppConstants.TIMING.TARGET_FRAME_TIME * 2) {
+                console.warn(`Slow detection (avg: ${avgFrameTime.toFixed(1)}ms, current: ${frameTime.toFixed(1)}ms, target: ${AppConstants.TIMING.TARGET_FRAME_TIME}ms) - adaptive throttling engaged`);
             }
 
         } catch (error) {
