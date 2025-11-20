@@ -183,6 +183,27 @@
     </div>
 
     <!-- External Libraries -->
+    <!-- OpenCV initialization callback (must be defined before opencv.js loads) -->
+    <script>
+        // Global flag for OpenCV readiness
+        window.isOpenCVReady = false;
+
+        // OpenCV ready callback - called when opencv.js finishes loading
+        function opencvReady() {
+            if (typeof cv !== 'undefined') {
+                window.isOpenCVReady = true;
+                console.log('✅ OpenCV.js loaded successfully');
+
+                // Initialize OpenCV wrapper if it exists
+                if (window.openCVWrapper) {
+                    window.openCVWrapper.initialize();
+                } else {
+                    // Wrapper not loaded yet, will auto-initialize when it loads
+                    console.log('OpenCV wrapper not ready yet, will initialize when loaded');
+                }
+            }
+        }
+    </script>
     <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.0/dist/opencv.min.js" onload="opencvReady();"></script>
 
     <!-- TensorFlow.js for object/pose/face detection -->
