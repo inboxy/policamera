@@ -172,7 +172,7 @@ export class OCRManager {
             font-weight: 500;
             padding: ${this.subtitleConfig.padding}px;
             text-align: center;
-            z-index: 9998;
+            z-index: 10001;
             opacity: 0;
             transition: opacity 0.3s ease-in-out;
             pointer-events: none;
@@ -358,6 +358,13 @@ export class OCRManager {
      */
     private showSubtitleBar(): void {
         if (this.subtitleBar) {
+            // Show a "scanning" indicator when OCR is enabled but no text detected yet
+            this.subtitleBar.innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 8px;">
+                    <span style="opacity: 0.7; font-size: 12px;">🔤 OCR</span>
+                    <span style="opacity: 0.6;">Scanning for text...</span>
+                </div>
+            `;
             this.subtitleBar.style.display = 'block';
             requestAnimationFrame(() => {
                 if (this.subtitleBar) {

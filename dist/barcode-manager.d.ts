@@ -87,11 +87,16 @@ export declare class BarcodeManager {
      */
     toggle(): Promise<boolean>;
     /**
+     * Show scanning indicator
+     */
+    private showScanningIndicator;
+    /**
      * Scan barcode from image element or video frame
      */
     scanFromImage(imageSource: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, isRealTime?: boolean): Promise<BarcodeResult | null>;
     /**
      * Scan continuously from video stream (polling-based)
+     * Uses canvas buffer to avoid interfering with video display
      * Returns interval ID that can be cleared with stopScanning()
      */
     startVideoScanning(videoElement: HTMLVideoElement, callback: (result: BarcodeResult) => void, intervalMs?: number): number;
