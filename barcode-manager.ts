@@ -79,6 +79,11 @@ export class BarcodeManager {
     private modal: HTMLDivElement | null = null;
     private modalTimeout: number | null = null;
 
+    // Canvas overlay for drawing bounding boxes
+    private overlayCanvas: HTMLCanvasElement | null = null;
+    private overlayEnabled: boolean = true;
+    private overlayTimeout: number | null = null;
+
     // Scanning state
     private lastScanTime: number = 0;
     private scanInterval: number;
@@ -594,6 +599,179 @@ export class BarcodeManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Set the canvas overlay for drawing barcode bounding boxes
+     * This should be called from the main app to provide the detection overlay canvas
+     */
+    setOverlayCanvas(canvas: HTMLCanvasElement | null): void {
+        this.overlayCanvas = canvas;
+    }
+
+    /**
+     * Enable or disable visual overlay of detected barcodes
+     */
+    setOverlayEnabled(enabled: boolean): void {
+        this.overlayEnabled = enabled;
+    }
+
+    /**
+     * Draw barcode bounding box overlay on the canvas
+     * Shows where the barcode was detected with a colored box and label
+     */
+    drawBarcodeOverlay(result: BarcodeResult, videoElement: HTMLVideoElement): void {
+        if (!this.overlayCanvas || !this.overlayEnabled) {
+            return;
+        }
+
+        const ctx = this.overlayCanvas.getContext('2d');
+        if (!ctx) return;
+
+        // Calculate scale factors between video and canvas
+        const scaleX = this.overlayCanvas.width / videoElement.videoWidth;
+        const scaleY = this.overlayCanvas.height / videoElement.videoHeight;
+
+        // Get result points (corners of the barcode)
+        const points = result.resultPoints;
+
+        if (!points || points.length === 0) {
+            // Fallback: draw in center if no points available
+            return;
+        }
+
+        // Calculate bounding box from result points
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+
+        points.forEach(point => {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        });
+
+        // Scale to canvas coordinates
+        const x = minX * scaleX;
+        const y = minY * scaleY;
+        const width = (maxX - minX) * scaleX;
+        const height = (maxY - minY) * scaleY;
+
+        // Choose color based on barcode format
+        const color = this.getBarcodeColor(result.format);
+
+        // Draw bounding box with glow effect
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, width, height);
+        ctx.shadowBlur = 0;
+
+        // Draw corner markers for more precise indication
+        const markerSize = Math.min(15, width * 0.1, height * 0.1);
+        ctx.lineWidth = 4;
+        points.forEach(point => {
+            const px = point.x * scaleX;
+            const py = point.y * scaleY;
+
+            ctx.beginPath();
+            ctx.arc(px, py, markerSize / 2, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+
+        // Prepare text label
+        const formatIcon = this.getFormatIcon(result.format);
+        const displayText = result.text.length > 30 ? result.text.substring(0, 30) + '...' : result.text;
+
+        // Draw label background
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const labelText = `${formatIcon} ${result.format}: ${displayText}`;
+        const metrics = ctx.measureText(labelText);
+        const labelWidth = metrics.width + 16;
+        const labelHeight = 30;
+
+        // Position label above the bounding box
+        const labelX = x;
+        const labelY = Math.max(labelHeight + 5, y - 5);
+
+        // Draw label background with gradient
+        const gradient = ctx.createLinearGradient(labelX, labelY - labelHeight, labelX, labelY);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+        gradient.addColorStop(1, 'rgba(20, 20, 20, 0.95)');
+        ctx.fillStyle = gradient;
+        this.drawRoundedRect(ctx, labelX, labelY - labelHeight, labelWidth, labelHeight, 6);
+        ctx.fill();
+
+        // Draw label border
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        this.drawRoundedRect(ctx, labelX, labelY - labelHeight, labelWidth, labelHeight, 6);
+        ctx.stroke();
+
+        // Draw label text
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(labelText, labelX + 8, labelY - labelHeight / 2 + 6);
+
+        // Auto-clear overlay after 2 seconds
+        if (this.overlayTimeout) {
+            window.clearTimeout(this.overlayTimeout);
+        }
+        this.overlayTimeout = window.setTimeout(() => {
+            this.clearOverlay();
+        }, 2000);
+    }
+
+    /**
+     * Clear the barcode overlay
+     */
+    clearOverlay(): void {
+        // The overlay will be cleared by the main detection loop
+        // This just clears our stored result so it won't be redrawn
+        if (this.overlayTimeout) {
+            window.clearTimeout(this.overlayTimeout);
+            this.overlayTimeout = null;
+        }
+    }
+
+    /**
+     * Get color for barcode format
+     */
+    private getBarcodeColor(format: string): string {
+        const colorMap: Record<string, string> = {
+            QR_CODE: '#00FF00',      // Green
+            DATA_MATRIX: '#00FFFF',  // Cyan
+            AZTEC: '#FF00FF',        // Magenta
+            PDF_417: '#FFFF00',      // Yellow
+            EAN_13: '#FF8800',       // Orange
+            EAN_8: '#FF8800',        // Orange
+            UPC_A: '#FF6600',        // Dark Orange
+            UPC_E: '#FF6600',        // Dark Orange
+            CODE_128: '#8800FF',     // Purple
+            CODE_39: '#0088FF',      // Blue
+        };
+        return colorMap[format] || '#B4F222'; // Default to app accent color
+    }
+
+    /**
+     * Draw rounded rectangle
+     */
+    private drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
     }
 
     /**

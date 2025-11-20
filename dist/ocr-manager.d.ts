@@ -76,6 +76,8 @@ export declare class OCRManager {
     private totalProcessTime;
     private overlayCanvas;
     private overlayEnabled;
+    private overlayTimeout;
+    private displayResult;
     constructor(config?: Partial<OCRConfig>, subtitleConfig?: Partial<SubtitleBarConfig>);
     /**
      * Initialize Tesseract worker
@@ -148,6 +150,10 @@ export declare class OCRManager {
      * Clear the overlay canvas
      */
     clearOverlay(): void;
+    /**
+     * Get the current result to display (may be null if timeout expired)
+     */
+    getDisplayResult(): OCRResult | null;
     /**
      * Get recognition history
      */

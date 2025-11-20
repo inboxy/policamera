@@ -1141,6 +1141,16 @@ class PoliCameraApp {
             const isEnabled = await window.barcodeManager.toggle();
             this.isBarcodeEnabled = isEnabled;
 
+            // Set overlay canvas for drawing bounding boxes
+            if (isEnabled && this.detectionOverlay) {
+                window.barcodeManager.setOverlayCanvas(this.detectionOverlay);
+                window.barcodeManager.setOverlayEnabled(true);
+            } else if (!isEnabled) {
+                // Clear overlay when disabled
+                window.barcodeManager.clearOverlay();
+                window.barcodeManager.setOverlayEnabled(false);
+            }
+
             // Update button styling
             if (isEnabled) {
                 this.barcodeFab.classList.add('active');
@@ -2269,11 +2279,19 @@ class PoliCameraApp {
             faceDetectionManager.drawFaces(ctx, this.currentFaces, scale);
         }
 
-        // Draw OCR text overlay if enabled and results available
+        // Draw OCR text overlay if enabled and results available (shows for 2 seconds)
         if (this.isOCREnabled && window.ocrManager) {
-            const currentResult = window.ocrManager.getCurrentResult();
+            const displayResult = window.ocrManager.getDisplayResult();
+            if (displayResult && this.video) {
+                window.ocrManager.drawTextOverlay(displayResult, this.video);
+            }
+        }
+
+        // Draw barcode overlay if enabled and results available (shows for 2 seconds)
+        if (this.isBarcodeEnabled && window.barcodeManager) {
+            const currentResult = window.barcodeManager.getCurrentResult();
             if (currentResult && this.video) {
-                window.ocrManager.drawTextOverlay(currentResult, this.video);
+                window.barcodeManager.drawBarcodeOverlay(currentResult, this.video);
             }
         }
 

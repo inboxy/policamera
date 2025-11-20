@@ -48,6 +48,9 @@ export declare class BarcodeManager {
     private fadeTimeout;
     private modal;
     private modalTimeout;
+    private overlayCanvas;
+    private overlayEnabled;
+    private overlayTimeout;
     private lastScanTime;
     private scanInterval;
     private currentResult;
@@ -138,6 +141,32 @@ export declare class BarcodeManager {
      * Escape HTML to prevent XSS attacks
      */
     private escapeHtml;
+    /**
+     * Set the canvas overlay for drawing barcode bounding boxes
+     * This should be called from the main app to provide the detection overlay canvas
+     */
+    setOverlayCanvas(canvas: HTMLCanvasElement | null): void;
+    /**
+     * Enable or disable visual overlay of detected barcodes
+     */
+    setOverlayEnabled(enabled: boolean): void;
+    /**
+     * Draw barcode bounding box overlay on the canvas
+     * Shows where the barcode was detected with a colored box and label
+     */
+    drawBarcodeOverlay(result: BarcodeResult, videoElement: HTMLVideoElement): void;
+    /**
+     * Clear the barcode overlay
+     */
+    clearOverlay(): void;
+    /**
+     * Get color for barcode format
+     */
+    private getBarcodeColor;
+    /**
+     * Draw rounded rectangle
+     */
+    private drawRoundedRect;
     /**
      * Add result to history with automatic FIFO cleanup
      *

@@ -47,6 +47,8 @@ export class OCRManager {
         // Canvas overlay for drawing text bounding boxes
         this.overlayCanvas = null;
         this.overlayEnabled = true;
+        this.overlayTimeout = null;
+        this.displayResult = null; // Result to display on overlay
         this.config = {
             language: config.language || 'eng',
             targetFPS: config.targetFPS || 1, // 1 FPS for OCR (it's slow)
@@ -199,10 +201,19 @@ export class OCRManager {
             // Cache result
             this.currentResult = ocrResult;
             this.addToHistory(ocrResult);
+            // Store result for display (will be shown for 2 seconds)
+            this.displayResult = ocrResult;
             // Update subtitle display
             if (ocrResult.text.length > 0) {
                 this.updateSubtitleText(ocrResult.text, ocrResult.confidence);
             }
+            // Auto-clear display result after 2 seconds
+            if (this.overlayTimeout) {
+                clearTimeout(this.overlayTimeout);
+            }
+            this.overlayTimeout = window.setTimeout(() => {
+                this.displayResult = null;
+            }, 2000);
             console.log(`📝 OCR: "${ocrResult.text}" (${ocrResult.confidence.toFixed(1)}% confidence, ${processTime.toFixed(0)}ms)`);
             this.isProcessing = false;
             return ocrResult;
@@ -387,12 +398,18 @@ export class OCRManager {
      * Clear the overlay canvas
      */
     clearOverlay() {
-        if (!this.overlayCanvas)
-            return;
-        const ctx = this.overlayCanvas.getContext('2d');
-        if (ctx) {
-            ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        // Clear the display result so it won't be redrawn
+        this.displayResult = null;
+        if (this.overlayTimeout) {
+            clearTimeout(this.overlayTimeout);
+            this.overlayTimeout = null;
         }
+    }
+    /**
+     * Get the current result to display (may be null if timeout expired)
+     */
+    getDisplayResult() {
+        return this.displayResult;
     }
     /**
      * Get recognition history
