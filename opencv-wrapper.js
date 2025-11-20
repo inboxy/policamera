@@ -1,23 +1,8 @@
 /**
  * OpenCV.js Wrapper for Optimized Computer Vision
  * Provides fast image processing for object detection pipeline
+ * Note: OpenCV initialization callback (opencvReady) is defined in index.html
  */
-
-// Global flag for OpenCV readiness
-window.isOpenCVReady = false;
-
-// OpenCV ready callback
-function opencvReady() {
-    if (typeof cv !== 'undefined') {
-        window.isOpenCVReady = true;
-        console.log('✅ OpenCV.js loaded successfully');
-
-        // Initialize OpenCV wrapper
-        if (window.openCVWrapper) {
-            window.openCVWrapper.initialize();
-        }
-    }
-}
 
 class OpenCVWrapper {
     constructor() {
