@@ -414,24 +414,28 @@ export class BarcodeManager {
                 this.consecutiveErrors = 0;
                 this.updateScanQuality(true);
             } catch (error) {
-                // NotFoundException is expected when no barcode found
-                if (!(error instanceof ZXing.NotFoundException)) {
-                    // Only log unexpected errors
-                    this.metrics.failedScans++;
-                    this.consecutiveErrors++;
-                    this.updateScanQuality(false);
+                // NotFoundException is expected when no barcode found - don't count as error
+                if (error instanceof ZXing.NotFoundException) {
+                    // This is normal - no barcode in frame
+                    // Don't increment error counter for NotFoundException
+                    return;
+                }
 
-                    if (this.debugMode) {
-                        console.debug('Barcode scan error:', error);
-                    }
+                // Only handle unexpected errors
+                this.metrics.failedScans++;
+                this.consecutiveErrors++;
+                this.updateScanQuality(false);
 
-                    // If too many consecutive errors, try to recover
-                    if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
-                        console.warn(
-                            `⚠️ Barcode scanner: ${this.consecutiveErrors} consecutive errors. Attempting recovery...`
-                        );
-                        this.handleScannerRecovery();
-                    }
+                if (this.debugMode) {
+                    console.debug('Barcode scan error:', error);
+                }
+
+                // If too many consecutive errors AND scanner is still enabled, try to recover
+                if (this.consecutiveErrors >= this.maxConsecutiveErrors && this.isEnabled) {
+                    console.warn(
+                        `⚠️ Barcode scanner: ${this.consecutiveErrors} consecutive errors. Attempting recovery...`
+                    );
+                    this.handleScannerRecovery();
                 }
             }
         }, intervalMs);
@@ -467,6 +471,10 @@ export class BarcodeManager {
             this.scanCanvas.height = 0;
             this.scanCanvas = null;
         }
+
+        // Reset error tracking when stopping
+        this.consecutiveErrors = 0;
+        this.scanQuality = 100;
     }
 
     /**
