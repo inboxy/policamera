@@ -2085,7 +2085,18 @@ class PoliCameraApp {
 
             // Run OCR if enabled (runs on frames 3, 7, 11, ...)
             if (cyclePosition === 3 && this.isOCREnabled && window.ocrManager) {
-                await window.ocrManager.recognizeText(this.video, true);
+                // Capture video frame to canvas for OCR
+                // Tesseract.js works better with canvas than video element
+                if (this.video && this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+                    const ocrCanvas = document.createElement('canvas');
+                    ocrCanvas.width = this.video.videoWidth;
+                    ocrCanvas.height = this.video.videoHeight;
+                    const ocrCtx = ocrCanvas.getContext('2d');
+                    if (ocrCtx) {
+                        ocrCtx.drawImage(this.video, 0, 0, ocrCanvas.width, ocrCanvas.height);
+                        await window.ocrManager.recognizeText(ocrCanvas, true);
+                    }
+                }
             }
 
             // Only draw if we got results (frame wasn't skipped for performance)
