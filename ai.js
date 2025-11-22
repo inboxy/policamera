@@ -644,12 +644,12 @@ class AIRecognitionManager {
             // Validate bbox before drawing
             if (!bbox || bbox.width <= 0 || bbox.height <= 0) return;
 
-            // Draw bounding box with shadow for better visibility
+            // Draw object outline instead of bounding box
+            // Remove the filled rectangle, just draw corner markers and edges
             ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
             ctx.shadowBlur = 4;
             ctx.strokeStyle = color;
-            ctx.lineWidth = 3;
-            ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+            ctx.lineWidth = 2;
 
             // Reset shadow
             ctx.shadowBlur = 0;

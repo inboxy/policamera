@@ -1117,13 +1117,20 @@ class PoliCameraApp {
                 window.ocrManager.setOverlayEnabled(false);
             }
 
-            // Update button styling
+            // Update button styling and show/hide OCR guide line
+            const ocrGuideLine = document.getElementById('ocrGuideLine');
             if (isEnabled) {
                 this.ocrFab.classList.add('active');
                 this.showToast('OCR enabled - Text shown on screen', 'text_fields');
+                if (ocrGuideLine) {
+                    ocrGuideLine.style.display = 'block';
+                }
             } else {
                 this.ocrFab.classList.remove('active');
                 this.showToast('OCR disabled', 'text_fields');
+                if (ocrGuideLine) {
+                    ocrGuideLine.style.display = 'none';
+                }
             }
         } catch (error) {
             console.error('Failed to toggle OCR:', error);
@@ -1160,10 +1167,14 @@ class PoliCameraApp {
                 window.barcodeManager.setOverlayEnabled(false);
             }
 
-            // Update button styling
+            // Update button styling and show/hide barcode guide box
+            const barcodeGuideBox = document.getElementById('barcodeGuideBox');
             if (isEnabled) {
                 this.barcodeFab.classList.add('active');
                 this.showToast('Barcode scanner enabled', 'qr_code_scanner');
+                if (barcodeGuideBox) {
+                    barcodeGuideBox.style.display = 'block';
+                }
 
                 // Start continuous scanning from video
                 if (this.video && isEnabled) {
@@ -1189,6 +1200,9 @@ class PoliCameraApp {
             } else {
                 this.barcodeFab.classList.remove('active');
                 this.showToast('Barcode scanner disabled', 'qr_code_scanner');
+                if (barcodeGuideBox) {
+                    barcodeGuideBox.style.display = 'none';
+                }
 
                 // Stop continuous scanning - cleanup interval first
                 if (this.barcodeIntervalId) {
