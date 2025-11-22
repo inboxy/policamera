@@ -35,6 +35,8 @@ export interface BarcodeMetrics {
     isEnabled: boolean;
     isInitialized: boolean;
     currentFormat: string | null;
+    scanQuality: number;
+    consecutiveErrors: number;
 }
 /**
  * BarcodeManager - Manages barcode/QR code scanning functionality
@@ -55,6 +57,14 @@ export declare class BarcodeManager {
     private lastScanTime;
     private scanInterval;
     private currentResult;
+    private scanCanvas;
+    private activeScanInterval;
+    private lastDetectedText;
+    private lastDetectionTime;
+    private readonly duplicateDebounceMs;
+    private consecutiveErrors;
+    private readonly maxConsecutiveErrors;
+    private scanQuality;
     /**
      * Result history storage
      * Stores the last 20 scanned barcode results in a FIFO queue.
@@ -111,6 +121,30 @@ export declare class BarcodeManager {
      * Stop continuous scanning
      */
     stopScanning(): void;
+    /**
+     * Check if this is a duplicate detection (debounce)
+     * Prevents rapid re-detection of the same barcode
+     */
+    private isDuplicateDetection;
+    /**
+     * Trigger haptic vibration feedback for successful scan
+     * Uses Vibration API if available
+     */
+    private triggerVibration;
+    /**
+     * Update scan quality metric based on success/failure
+     * Uses exponential moving average for smoothing
+     */
+    private updateScanQuality;
+    /**
+     * Get current scan quality as percentage
+     */
+    getScanQuality(): number;
+    /**
+     * Handle scanner recovery after consecutive errors
+     * Attempts to reinitialize the reader
+     */
+    private handleScannerRecovery;
     /**
      * Create subtitle bar UI element
      */

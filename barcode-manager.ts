@@ -49,6 +49,8 @@ export interface BarcodeMetrics {
     isEnabled: boolean;
     isInitialized: boolean;
     currentFormat: string | null;
+    scanQuality: number; // 0-100 percentage
+    consecutiveErrors: number;
 }
 
 /**
@@ -89,6 +91,18 @@ export class BarcodeManager {
     private lastScanTime: number = 0;
     private scanInterval: number;
     private currentResult: BarcodeResult | null = null;
+    private scanCanvas: HTMLCanvasElement | null = null;
+    private activeScanInterval: number | null = null;
+
+    // Duplicate detection for debouncing
+    private lastDetectedText: string = '';
+    private lastDetectionTime: number = 0;
+    private readonly duplicateDebounceMs: number = 2000; // 2 seconds
+
+    // Error tracking and retry logic
+    private consecutiveErrors: number = 0;
+    private readonly maxConsecutiveErrors: number = 10;
+    private scanQuality: number = 100; // Percentage (0-100)
 
     /**
      * Result history storage
@@ -295,6 +309,9 @@ export class BarcodeManager {
                 this.updateSubtitleText(barcodeResult);
             }
 
+            // Vibration feedback for successful scan
+            this.triggerVibration();
+
             if (this.debugMode) {
                 console.log(
                     `📱 Barcode detected [${barcodeResult.format}]: ${barcodeResult.text.substring(0, 50)}${barcodeResult.text.length > 50 ? '...' : ''}`
@@ -337,6 +354,9 @@ export class BarcodeManager {
             return -1;
         }
 
+        // Store canvas for cleanup
+        this.scanCanvas = canvas;
+
         const scanInterval = window.setInterval(async () => {
             try {
                 // Skip if video is not ready
@@ -368,6 +388,11 @@ export class BarcodeManager {
                         })),
                     };
 
+                    // Check for duplicate detection (debounce)
+                    if (this.isDuplicateDetection(barcodeResult)) {
+                        return;
+                    }
+
                     this.currentResult = barcodeResult;
                     this.addToHistory(barcodeResult);
 
@@ -377,19 +402,41 @@ export class BarcodeManager {
                     this.updateSubtitleText(barcodeResult);
                     this.metrics.successfulScans++;
 
+                    // Vibration feedback for successful scan
+                    this.triggerVibration();
+
                     callback(barcodeResult);
                 }
 
                 this.metrics.scansPerformed++;
+
+                // Reset consecutive errors on successful scan attempt
+                this.consecutiveErrors = 0;
+                this.updateScanQuality(true);
             } catch (error) {
                 // NotFoundException is expected when no barcode found
                 if (!(error instanceof ZXing.NotFoundException)) {
                     // Only log unexpected errors
-                    console.debug('Barcode scan error:', error);
+                    this.metrics.failedScans++;
+                    this.consecutiveErrors++;
+                    this.updateScanQuality(false);
+
+                    if (this.debugMode) {
+                        console.debug('Barcode scan error:', error);
+                    }
+
+                    // If too many consecutive errors, try to recover
+                    if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+                        console.warn(
+                            `⚠️ Barcode scanner: ${this.consecutiveErrors} consecutive errors. Attempting recovery...`
+                        );
+                        this.handleScannerRecovery();
+                    }
                 }
             }
         }, intervalMs);
 
+        this.activeScanInterval = scanInterval;
         return scanInterval;
     }
 
@@ -402,6 +449,113 @@ export class BarcodeManager {
             if (this.debugMode) {
                 console.log('📱 Barcode scanning stopped');
             }
+        }
+
+        // Clear active interval
+        if (this.activeScanInterval) {
+            window.clearInterval(this.activeScanInterval);
+            this.activeScanInterval = null;
+        }
+
+        // Clean up scan canvas
+        if (this.scanCanvas) {
+            const ctx = this.scanCanvas.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, this.scanCanvas.width, this.scanCanvas.height);
+            }
+            this.scanCanvas.width = 0;
+            this.scanCanvas.height = 0;
+            this.scanCanvas = null;
+        }
+    }
+
+    /**
+     * Check if this is a duplicate detection (debounce)
+     * Prevents rapid re-detection of the same barcode
+     */
+    private isDuplicateDetection(result: BarcodeResult): boolean {
+        const now = Date.now();
+
+        // Same barcode detected within debounce window
+        if (
+            result.text === this.lastDetectedText &&
+            now - this.lastDetectionTime < this.duplicateDebounceMs
+        ) {
+            return true;
+        }
+
+        // Update last detection
+        this.lastDetectedText = result.text;
+        this.lastDetectionTime = now;
+        return false;
+    }
+
+    /**
+     * Trigger haptic vibration feedback for successful scan
+     * Uses Vibration API if available
+     */
+    private triggerVibration(): void {
+        if ('vibrate' in navigator) {
+            try {
+                // Short vibration pattern: vibrate-pause-vibrate
+                navigator.vibrate([100, 50, 100]);
+            } catch (error) {
+                // Vibration failed, ignore silently
+                if (this.debugMode) {
+                    console.debug('Vibration not supported or failed:', error);
+                }
+            }
+        }
+    }
+
+    /**
+     * Update scan quality metric based on success/failure
+     * Uses exponential moving average for smoothing
+     */
+    private updateScanQuality(success: boolean): void {
+        const alpha = 0.1; // Smoothing factor
+        const newValue = success ? 100 : 0;
+        this.scanQuality = alpha * newValue + (1 - alpha) * this.scanQuality;
+    }
+
+    /**
+     * Get current scan quality as percentage
+     */
+    getScanQuality(): number {
+        return Math.round(this.scanQuality);
+    }
+
+    /**
+     * Handle scanner recovery after consecutive errors
+     * Attempts to reinitialize the reader
+     */
+    private async handleScannerRecovery(): Promise<void> {
+        try {
+            console.log('🔄 Attempting to recover barcode scanner...');
+
+            // Reset the reader
+            if (this.reader) {
+                this.reader.reset();
+            }
+
+            // Reinitialize hints
+            const hints = new Map();
+            if (this.config.formats && this.config.formats.length > 0) {
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, this.config.formats);
+            }
+            if (this.config.tryHarder) {
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+            }
+
+            this.reader = new ZXing.BrowserMultiFormatReader(hints);
+
+            // Reset error counter
+            this.consecutiveErrors = 0;
+            this.scanQuality = 50; // Reset to neutral quality
+
+            console.log('✅ Barcode scanner recovered successfully');
+        } catch (error) {
+            console.error('❌ Failed to recover barcode scanner:', error);
         }
     }
 
@@ -853,6 +1007,8 @@ export class BarcodeManager {
             isEnabled: this.isEnabled,
             isInitialized: this.isInitialized,
             currentFormat: this.currentResult?.format || null,
+            scanQuality: this.getScanQuality(),
+            consecutiveErrors: this.consecutiveErrors,
         };
     }
 

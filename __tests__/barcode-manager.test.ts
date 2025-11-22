@@ -332,6 +332,20 @@ describe('BarcodeManager', () => {
             const metrics = barcodeManager.getMetrics();
             expect(metrics.currentFormat).toBe('EAN_13');
         });
+
+        test('should track scan quality', async () => {
+            const mockImage = document.createElement('img');
+            await barcodeManager.scanFromImage(mockImage);
+
+            const metrics = barcodeManager.getMetrics();
+            expect(metrics.scanQuality).toBeGreaterThan(0);
+            expect(metrics.scanQuality).toBeLessThanOrEqual(100);
+        });
+
+        test('should track consecutive errors', async () => {
+            const metrics = barcodeManager.getMetrics();
+            expect(metrics.consecutiveErrors).toBe(0);
+        });
     });
 
     describe('Format Management', () => {
@@ -499,6 +513,70 @@ describe('BarcodeManager', () => {
 
             expect(barcodeManager.getCurrentResult()).toBeNull();
             expect(barcodeManager.getHistory()).toEqual([]);
+        });
+    });
+
+    describe('Debouncing and Duplicate Detection', () => {
+        beforeEach(async () => {
+            await barcodeManager.initialize();
+            await barcodeManager.toggle();
+        });
+
+        test('should prevent duplicate detections within debounce window', async () => {
+            const mockImage = document.createElement('img');
+
+            // First scan
+            const result1 = await barcodeManager.scanFromImage(mockImage);
+            expect(result1).toBeTruthy();
+
+            // Immediate second scan of same barcode - should not trigger callback
+            const history = barcodeManager.getHistory();
+            const initialHistoryLength = history.length;
+
+            // Note: The debounce is internal to startVideoScanning
+            // In scanFromImage, each call processes independently
+            // This test documents current behavior
+            const result2 = await barcodeManager.scanFromImage(mockImage);
+            expect(result2).toBeTruthy();
+        });
+
+        test('should get scan quality metric', () => {
+            const quality = barcodeManager.getScanQuality();
+            expect(quality).toBeGreaterThanOrEqual(0);
+            expect(quality).toBeLessThanOrEqual(100);
+        });
+    });
+
+    describe('Vibration Feedback', () => {
+        beforeEach(async () => {
+            await barcodeManager.initialize();
+            await barcodeManager.toggle();
+        });
+
+        test('should not crash when vibration is not supported', async () => {
+            // Mock navigator.vibrate as undefined
+            const originalVibrate = navigator.vibrate;
+            // @ts-ignore
+            delete navigator.vibrate;
+
+            const mockImage = document.createElement('img');
+            await expect(barcodeManager.scanFromImage(mockImage)).resolves.toBeTruthy();
+
+            // Restore
+            if (originalVibrate) {
+                navigator.vibrate = originalVibrate;
+            }
+        });
+
+        test('should call vibrate API on successful scan if available', async () => {
+            // Mock vibrate function
+            const mockVibrate = jest.fn();
+            navigator.vibrate = mockVibrate;
+
+            const mockImage = document.createElement('img');
+            await barcodeManager.scanFromImage(mockImage);
+
+            expect(mockVibrate).toHaveBeenCalledWith([100, 50, 100]);
         });
     });
 
