@@ -917,21 +917,11 @@ export class BarcodeManager {
 
     /**
      * Get color for barcode format
+     * All formats now use yellow/gold color scheme
      */
-    private getBarcodeColor(format: string): string {
-        const colorMap: Record<string, string> = {
-            QR_CODE: '#00FF00',      // Green
-            DATA_MATRIX: '#00FFFF',  // Cyan
-            AZTEC: '#FF00FF',        // Magenta
-            PDF_417: '#FFFF00',      // Yellow
-            EAN_13: '#FF8800',       // Orange
-            EAN_8: '#FF8800',        // Orange
-            UPC_A: '#FF6600',        // Dark Orange
-            UPC_E: '#FF6600',        // Dark Orange
-            CODE_128: '#8800FF',     // Purple
-            CODE_39: '#0088FF',      // Blue
-        };
-        return colorMap[format] || '#B4F222'; // Default to app accent color
+    private getBarcodeColor(_format: string): string {
+        // All barcode formats now use yellow for consistent visibility
+        return '#FFFF00'; // Bright yellow for all barcode types
     }
 
     /**

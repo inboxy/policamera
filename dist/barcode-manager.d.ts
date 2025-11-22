@@ -197,6 +197,7 @@ export declare class BarcodeManager {
     clearOverlay(): void;
     /**
      * Get color for barcode format
+     * All formats now use yellow/gold color scheme
      */
     private getBarcodeColor;
     /**

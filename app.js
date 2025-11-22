@@ -1171,6 +1171,17 @@ class PoliCameraApp {
                         this.video,
                         (result) => {
                             console.log(`📱 Scanned ${result.format}: ${result.text}`);
+
+                            // Show toast notification with barcode info
+                            const displayText = result.text.length > 50
+                                ? result.text.substring(0, 50) + '...'
+                                : result.text;
+                            UIHelpers.showToast(
+                                `${result.format}: ${displayText}`,
+                                'success',
+                                'qr_code_scanner',
+                                3000
+                            );
                         },
                         200 // Scan every 200ms
                     );
