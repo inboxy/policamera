@@ -49,6 +49,8 @@ export class BarcodeManager {
         this.consecutiveErrors = 0;
         this.maxConsecutiveErrors = 10;
         this.scanQuality = 100; // Percentage (0-100)
+        this.lastRecoveryTime = 0;
+        this.recoveryCooldownMs = 10000; // 10 seconds between recovery attempts
         /**
          * Result history storage
          * Stores the last 20 scanned barcode results in a FIFO queue.
@@ -311,9 +313,14 @@ export class BarcodeManager {
                     console.debug('Barcode scan error:', error);
                 }
                 // If too many consecutive errors AND scanner is still enabled, try to recover
-                if (this.consecutiveErrors >= this.maxConsecutiveErrors && this.isEnabled) {
+                // But only if we haven't recovered recently (cooldown period)
+                const now = Date.now();
+                if (this.consecutiveErrors >= this.maxConsecutiveErrors &&
+                    this.isEnabled &&
+                    now - this.lastRecoveryTime > this.recoveryCooldownMs) {
                     console.warn(`⚠️ Barcode scanner: ${this.consecutiveErrors} consecutive errors. Attempting recovery...`);
                     this.handleScannerRecovery();
+                    this.lastRecoveryTime = now;
                 }
             }
         }, intervalMs);

@@ -65,6 +65,8 @@ export declare class BarcodeManager {
     private consecutiveErrors;
     private readonly maxConsecutiveErrors;
     private scanQuality;
+    private lastRecoveryTime;
+    private readonly recoveryCooldownMs;
     /**
      * Result history storage
      * Stores the last 20 scanned barcode results in a FIFO queue.

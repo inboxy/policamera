@@ -103,6 +103,8 @@ export class BarcodeManager {
     private consecutiveErrors: number = 0;
     private readonly maxConsecutiveErrors: number = 10;
     private scanQuality: number = 100; // Percentage (0-100)
+    private lastRecoveryTime: number = 0;
+    private readonly recoveryCooldownMs: number = 10000; // 10 seconds between recovery attempts
 
     /**
      * Result history storage
@@ -431,11 +433,18 @@ export class BarcodeManager {
                 }
 
                 // If too many consecutive errors AND scanner is still enabled, try to recover
-                if (this.consecutiveErrors >= this.maxConsecutiveErrors && this.isEnabled) {
+                // But only if we haven't recovered recently (cooldown period)
+                const now = Date.now();
+                if (
+                    this.consecutiveErrors >= this.maxConsecutiveErrors &&
+                    this.isEnabled &&
+                    now - this.lastRecoveryTime > this.recoveryCooldownMs
+                ) {
                     console.warn(
                         `⚠️ Barcode scanner: ${this.consecutiveErrors} consecutive errors. Attempting recovery...`
                     );
                     this.handleScannerRecovery();
+                    this.lastRecoveryTime = now;
                 }
             }
         }, intervalMs);
